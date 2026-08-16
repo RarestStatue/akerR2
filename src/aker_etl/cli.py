@@ -265,15 +265,78 @@ def insights_generate(
     snapshot: Optional[str] = typer.Option(None, "--snapshot", help="YYYY-MM-DD; default latest."),
     force: bool = typer.Option(False, "--force", help="Regenerate even if the payload is unchanged."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print chunks + token counts, no inference."),
+    from_payload: Optional[Path] = typer.Option(
+        None, "--from",
+        help="Read the context payload from a file written by `export-json` instead of the "
+             "database. Implies no database connection; requires --out."),
+    out: Optional[Path] = typer.Option(
+        None, "--out",
+        help="Write insights to this JSON file instead of the database. Import them later "
+             "with `insights import`."),
 ) -> None:
     """Build the context payload and generate insights with the local model."""
-    from .insights.generate import generate
+    if from_payload and not out:
+        console.print(
+            "[red]--from requires --out: without a database there is nowhere to store insights[/]"
+        )
+        raise typer.Exit(EXIT_STRUCTURAL)
+    if from_payload and snapshot:
+        console.print(
+            "[red]--from and --snapshot conflict: the payload file already fixes the "
+            "snapshot (its \"as_of\" field)[/]"
+        )
+        raise typer.Exit(EXIT_STRUCTURAL)
+    if from_payload and not from_payload.is_file():
+        console.print(f"[red]--from {from_payload}: no such file[/]")
+        raise typer.Exit(EXIT_STRUCTURAL)
+    if out and out.suffix.lower() != ".json":
+        console.print("[red]--out must be a .json path[/]")
+        raise typer.Exit(EXIT_STRUCTURAL)
+    if out and force:
+        console.print(
+            "[yellow]--force has no effect with --out: the idempotency guard is a database check[/]"
+        )
 
     s = _settings()
     as_of = dt.date.fromisoformat(snapshot) if snapshot else None
-    outcome = generate(s, as_of=as_of, force=force, dry_run=dry_run)
+
+    if out:
+        from .insights.generate import generate_to_file
+
+        try:
+            outcome = generate_to_file(s, out, as_of=as_of, payload_file=from_payload, dry_run=dry_run)
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/]")
+            raise typer.Exit(EXIT_STRUCTURAL) from exc
+    else:
+        from .insights.generate import generate
+
+        outcome = generate(s, as_of=as_of, force=force, dry_run=dry_run)
+
     console.print(outcome.render())
     raise typer.Exit(EXIT_ERRORS if outcome.status == "failed" else EXIT_OK)
+
+
+@insights_app.command("import")
+def insights_import(
+    path: Path = typer.Argument(..., help="Artifact written by `insights generate --out`."),
+    allow_stale: bool = typer.Option(
+        False, "--allow-stale",
+        help="Import even though the database payload changed since generation."),
+    allow_empty: bool = typer.Option(
+        False, "--allow-empty",
+        help="Import an artifact with zero insights, clearing the snapshot's insights."),
+) -> None:
+    """Verify a generated artifact against the database and store it."""
+    from .insights.store import import_artifact
+
+    s = _settings()
+    outcome = import_artifact(s, path, allow_stale=allow_stale, allow_empty=allow_empty)
+    console.print(outcome.render())
+    if outcome.status == "failed":
+        raise typer.Exit(EXIT_STRUCTURAL)
+    if outcome.status == "refused":
+        raise typer.Exit(EXIT_ERRORS)
 
 
 @insights_app.command("show")

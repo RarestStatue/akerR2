@@ -1,0 +1,1838 @@
+{
+  "artifact_version": 1,
+  "as_of": "2026-02-25",
+  "prompt_sha256": "5fa7c35648a68c0bdb6e848c91cd1d4df064d8f4c7e569b5db4ac74af8c5f7f4",
+  "model": "qwen3.5:4b",
+  "generated_at": "2026-08-16T20:32:38.311064Z",
+  "payload_source": "database",
+  "generator": {
+    "ollama_host": "http://localhost:11434",
+    "num_ctx_map": 4096,
+    "num_ctx_reduce": 8192,
+    "num_predict": 3072,
+    "positioning": true,
+    "seed": 7
+  },
+  "stats": {
+    "chunks": 14,
+    "calls": 27,
+    "map_calls": 14,
+    "positioning_calls": 12,
+    "reduce_calls": 1,
+    "insights_kept": 65,
+    "insights_dropped": 5,
+    "elapsed_s": 420.9959227899999
+  },
+  "insights": [
+    {
+      "scope": "property",
+      "property_code": "115r",
+      "asset_key": null,
+      "category": "concession",
+      "priority": "medium",
+      "headline": "Significant concession load at Canfield Park",
+      "detail": "Property 115r carries a negative concession balance of -12006.39, reducing effective revenue per unit.",
+      "evidence": [
+        {
+          "metric": "concession",
+          "value": "-12006.39",
+          "comparison": null
+        },
+        {
+          "metric": "rent",
+          "value": "754322.32",
+          "comparison": null
+        },
+        {
+          "metric": "balance",
+          "value": "-35465.66",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:115"
+    },
+    {
+      "scope": "property",
+      "property_code": "115r",
+      "asset_key": null,
+      "category": "occupancy",
+      "priority": "low",
+      "headline": "Occupancy at Canfield Park exceeds portfolio average",
+      "detail": "Property 115r sits at 96.00% occupancy compared to the portfolio average of 95.29%.",
+      "evidence": [
+        {
+          "metric": "pct_occupied",
+          "value": "96.00",
+          "comparison": null
+        },
+        {
+          "metric": "pct_occupied",
+          "value": "95.29",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:115"
+    },
+    {
+      "scope": "property",
+      "property_code": "115r",
+      "asset_key": null,
+      "category": "revenue",
+      "priority": "medium",
+      "headline": "Market rent exceeds actual rent collected at Canfield Park",
+      "detail": "Actual rent collected is 754322.32 while market rent is 763814.00, indicating a 0.97% gap.",
+      "evidence": [
+        {
+          "metric": "rent",
+          "value": "754322.32",
+          "comparison": null
+        },
+        {
+          "metric": "market_rent",
+          "value": "763814.00",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:115"
+    },
+    {
+      "scope": "property",
+      "property_code": "115r",
+      "asset_key": null,
+      "category": "unit_mix",
+      "priority": "low",
+      "headline": "Parking revenue dominates non-rent income at Canfield Park",
+      "detail": "Parking charges of 28490.00 represent the largest non-rent revenue category at 23.4% of total non-rent revenue.",
+      "evidence": [
+        {
+          "metric": "parking",
+          "value": "28490.00",
+          "comparison": null
+        },
+        {
+          "metric": "rent",
+          "value": "754322.32",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:115"
+    },
+    {
+      "scope": "property",
+      "property_code": "115r",
+      "asset_key": null,
+      "category": "delinquency",
+      "priority": "low",
+      "headline": "Negative balance indicates potential collection issues at Canfield Park",
+      "detail": "Property 115r shows a negative balance of -35465.66 despite positive lease charges.",
+      "evidence": [
+        {
+          "metric": "balance",
+          "value": "-35465.66",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:115"
+    },
+    {
+      "scope": "property",
+      "property_code": "126r",
+      "asset_key": null,
+      "category": "concession",
+      "priority": "high",
+      "headline": "Heavy concession load on 126r property",
+      "detail": "Property 126r carries a significant concession burden of -21919.14 across 55 lines, representing a notable drag on revenue relative to its market potential.",
+      "evidence": [
+        {
+          "metric": "concession",
+          "value": "-21919.14",
+          "comparison": null
+        },
+        {
+          "metric": "line_count",
+          "value": "55",
+          "comparison": null
+        },
+        {
+          "metric": "property_code",
+          "value": "126r",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:126"
+    },
+    {
+      "scope": "property",
+      "property_code": "134r",
+      "asset_key": null,
+      "category": "concession",
+      "priority": "high",
+      "headline": "Heavy concession load at 55 Riverwalk Place",
+      "detail": "Significant negative balance driven by 25 concession lines totaling -10258.20, creating a property balance of -94467.53.",
+      "evidence": [
+        {
+          "metric": "balance",
+          "value": "-94467.53",
+          "comparison": null
+        },
+        {
+          "metric": "concession",
+          "value": "-10258.20",
+          "comparison": null
+        },
+        {
+          "metric": "lease_charges",
+          "value": "1180076.57",
+          "comparison": null
+        },
+        {
+          "metric": "market_rent",
+          "value": "1212256.00",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:134"
+    },
+    {
+      "scope": "property",
+      "property_code": "134r",
+      "asset_key": null,
+      "category": "expiration",
+      "priority": "high",
+      "headline": "Major lease expiration cluster in Q2 2026",
+      "detail": "65 expiring leases with 236175.03 at risk concentrated in July 2026, followed by 58 units in August.",
+      "evidence": [
+        {
+          "metric": "expiring_leases",
+          "value": "65",
+          "comparison": null
+        },
+        {
+          "metric": "charges_at_risk",
+          "value": "236175.03",
+          "comparison": null
+        },
+        {
+          "metric": "expiry_month",
+          "value": "2026-07-01",
+          "comparison": null
+        },
+        {
+          "metric": "property_code",
+          "value": "134r",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:134"
+    },
+    {
+      "scope": "property",
+      "property_code": "134r",
+      "asset_key": null,
+      "category": "occupancy",
+      "priority": "medium",
+      "headline": "Occupancy slightly below portfolio average",
+      "detail": "Property occupancy at 95.69% trails portfolio average of 95.29% with 14 vacant units out of 348 total.",
+      "evidence": [
+        {
+          "metric": "pct_occupied",
+          "value": "95.69",
+          "comparison": null
+        },
+        {
+          "metric": "occupied_units",
+          "value": "333",
+          "comparison": null
+        },
+        {
+          "metric": "vacant_units",
+          "value": "14",
+          "comparison": null
+        },
+        {
+          "metric": "units",
+          "value": "348",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:134"
+    },
+    {
+      "scope": "property",
+      "property_code": "134r",
+      "asset_key": null,
+      "category": "delinquency",
+      "priority": "medium",
+      "headline": "Negative balance indicates potential delinquency",
+      "detail": "Property balance of -94467.53 suggests outstanding concessions or unpaid rent affecting cash flow.",
+      "evidence": [
+        {
+          "metric": "balance",
+          "value": "-94467.53",
+          "comparison": null
+        },
+        {
+          "metric": "lease_charges",
+          "value": "1180076.57",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:134"
+    },
+    {
+      "scope": "property",
+      "property_code": "134r",
+      "asset_key": null,
+      "category": "unit_mix",
+      "priority": "low",
+      "headline": "Single non-revenue unit impacting revenue mix",
+      "detail": "One non-revenue unit present among 333 occupied units, reducing effective revenue generation.",
+      "evidence": [
+        {
+          "metric": "non_revenue_units",
+          "value": "1",
+          "comparison": null
+        },
+        {
+          "metric": "occupied_units",
+          "value": "333",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:134"
+    },
+    {
+      "scope": "property",
+      "property_code": "134r",
+      "asset_key": null,
+      "category": "data_quality",
+      "priority": "low",
+      "headline": "Property 134c shows zero activity",
+      "detail": "Property code 134c reports zero units, zero square feet, and zero occupancy, indicating potential data gap or inactive status.",
+      "evidence": [
+        {
+          "metric": "units",
+          "value": "3",
+          "comparison": null
+        },
+        {
+          "metric": "occupied_units",
+          "value": "0",
+          "comparison": null
+        },
+        {
+          "metric": "square_feet",
+          "value": "0",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:134"
+    },
+    {
+      "scope": "property",
+      "property_code": "138r",
+      "asset_key": null,
+      "category": "concession",
+      "priority": "high",
+      "headline": "138r carries $46,146.00 in concessions",
+      "detail": "Property 138r has a significant concession load of $46,146.00 across 26 units, creating a revenue drag compared to the $667,871.00 contract rent.",
+      "evidence": [
+        {
+          "metric": "concessions",
+          "value": "-46146.00",
+          "comparison": null
+        },
+        {
+          "metric": "contract_rent",
+          "value": "667871.00",
+          "comparison": null
+        },
+        {
+          "metric": "units",
+          "value": "221",
+          "comparison": null
+        },
+        {
+          "metric": "property_code",
+          "value": "138r",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:138"
+    },
+    {
+      "scope": "property",
+      "property_code": "139r",
+      "asset_key": null,
+      "category": "concession",
+      "priority": "high",
+      "headline": "Significant concession load on 139r property",
+      "detail": "Property 139r carries a negative concession balance of -1925.00 across 11 lines, creating a drag on revenue collection.",
+      "evidence": [
+        {
+          "metric": "amount",
+          "value": "-1925.00",
+          "comparison": null
+        },
+        {
+          "metric": "category",
+          "value": "concession",
+          "comparison": null
+        },
+        {
+          "metric": "line_count",
+          "value": "11",
+          "comparison": null
+        },
+        {
+          "metric": "property_code",
+          "value": "139r",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:139"
+    },
+    {
+      "scope": "property",
+      "property_code": "143c",
+      "asset_key": null,
+      "category": "occupancy",
+      "priority": "high",
+      "headline": "Commercial unit 143c occupancy at 51.72% is critically low",
+      "detail": "Property 143c shows only 51.72% occupancy with 14 vacant units out of 29 total, significantly below the portfolio average of 95.29%. This represents a major revenue gap compared to the adjacent 143a unit.",
+      "evidence": [
+        {
+          "metric": "pct_occupied",
+          "value": "51.72",
+          "comparison": null
+        },
+        {
+          "metric": "vacant_units",
+          "value": "14",
+          "comparison": null
+        },
+        {
+          "metric": "occupied_units",
+          "value": "15",
+          "comparison": null
+        },
+        {
+          "metric": "pct_occupied",
+          "value": "95.29",
+          "comparison": "portfolio_avg"
+        }
+      ],
+      "source_chunk": "map:143"
+    },
+    {
+      "scope": "property",
+      "property_code": "143a",
+      "asset_key": null,
+      "category": "concession",
+      "priority": "high",
+      "headline": "143a carries a $12,681 concession load across 66 lines",
+      "detail": "Property 143a has a significant concession burden of $12,681.00 spread across 66 lines, which is a notable drag on revenue efficiency. This is the only property with a negative balance in the charge mix.",
+      "evidence": [
+        {
+          "metric": "concession",
+          "value": "-12681.00",
+          "comparison": null
+        },
+        {
+          "metric": "line_count",
+          "value": "66",
+          "comparison": null
+        },
+        {
+          "metric": "balance",
+          "value": "-21147.08",
+          "comparison": null
+        },
+        {
+          "metric": "balance",
+          "value": "28615.51",
+          "comparison": "adjacent_property"
+        }
+      ],
+      "source_chunk": "map:143"
+    },
+    {
+      "scope": "property",
+      "property_code": "143a",
+      "asset_key": null,
+      "category": "expiration",
+      "priority": "high",
+      "headline": "143a faces massive lease expiration risk in Q2 2026",
+      "detail": "Property 143a has 36 expiring leases in May 2026 with $71,833.00 at risk, followed by 41 leases in June 2026 totaling $77,610.00. This clustering requires immediate renewal strategy.",
+      "evidence": [
+        {
+          "metric": "charges_at_risk",
+          "value": "71833.00",
+          "comparison": null
+        },
+        {
+          "metric": "expiring_leases",
+          "value": "36",
+          "comparison": null
+        },
+        {
+          "metric": "charges_at_risk",
+          "value": "77610.00",
+          "comparison": null
+        },
+        {
+          "metric": "expiring_leases",
+          "value": "41",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:143"
+    },
+    {
+      "scope": "asset",
+      "property_code": null,
+      "asset_key": "143",
+      "category": "unit_mix",
+      "priority": "medium",
+      "headline": "143a dominates asset with 313 occupied units vs 143c's 15",
+      "detail": "The asset 143 is heavily skewed toward 143a, which holds 313 occupied units, while 143c only has 15 occupied units. The 143c segment appears to be a distinct commercial or underperforming segment.",
+      "evidence": [
+        {
+          "metric": "occupied_units",
+          "value": "313",
+          "comparison": null
+        },
+        {
+          "metric": "occupied_units",
+          "value": "15",
+          "comparison": null
+        },
+        {
+          "metric": "units",
+          "value": "341",
+          "comparison": null
+        },
+        {
+          "metric": "units",
+          "value": "29",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:143"
+    },
+    {
+      "scope": "property",
+      "property_code": "143c",
+      "asset_key": null,
+      "category": "data_quality",
+      "priority": "low",
+      "headline": "143c has zero square footage recorded in rent roll",
+      "detail": "Property 143c lists 0 square feet despite having 29 units and $57,918.14 in lease charges. This data gap prevents accurate revenue per square foot analysis.",
+      "evidence": [
+        {
+          "metric": "square_feet",
+          "value": "0",
+          "comparison": null
+        },
+        {
+          "metric": "units",
+          "value": "29",
+          "comparison": null
+        },
+        {
+          "metric": "lease_charges",
+          "value": "57918.14",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:143"
+    },
+    {
+      "scope": "asset",
+      "property_code": null,
+      "asset_key": "143",
+      "category": "trend",
+      "priority": "medium",
+      "headline": "143a shows strong holdover potential for expiring leases",
+      "detail": "Most expiring leases in 143a have a holdover_mtm of 0, indicating no historical holdover behavior. However, the May 2026 cluster has 36 expiring leases with $71,833.00 at risk.",
+      "evidence": [
+        {
+          "metric": "holdover_mtm",
+          "value": "0",
+          "comparison": null
+        },
+        {
+          "metric": "expiring_leases",
+          "value": "36",
+          "comparison": null
+        },
+        {
+          "metric": "charges_at_risk",
+          "value": "71833.00",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:143"
+    },
+    {
+      "scope": "property",
+      "property_code": "144r",
+      "asset_key": null,
+      "category": "concession",
+      "priority": "medium",
+      "headline": "Concession load exceeds rent revenue",
+      "detail": "A single concession line item of -736.80 offsets 11812.00 in fees, creating a net negative balance of -74780.87",
+      "evidence": [
+        {
+          "metric": "concession",
+          "value": "-736.80",
+          "comparison": null
+        },
+        {
+          "metric": "fee",
+          "value": "11812.00",
+          "comparison": null
+        },
+        {
+          "metric": "balance",
+          "value": "-74780.87",
+          "comparison": null
+        },
+        {
+          "metric": "rent",
+          "value": "1557081.66",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:144"
+    },
+    {
+      "scope": "property",
+      "property_code": "144r",
+      "asset_key": null,
+      "category": "expiration",
+      "priority": "high",
+      "headline": "March expiration cluster risks 50k revenue",
+      "detail": "24 expiring leases in March 2026 carry 50974.00 in charges at risk with zero holdover months",
+      "evidence": [
+        {
+          "metric": "charges_at_risk",
+          "value": "50974.00",
+          "comparison": null
+        },
+        {
+          "metric": "expiring_leases",
+          "value": "24",
+          "comparison": null
+        },
+        {
+          "metric": "holdover_mtm",
+          "value": "0",
+          "comparison": null
+        },
+        {
+          "metric": "expiry_month",
+          "value": "2026-03-01",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:144"
+    },
+    {
+      "scope": "property",
+      "property_code": "144r",
+      "asset_key": null,
+      "category": "occupancy",
+      "priority": "low",
+      "headline": "High occupancy masks 15 vacant units",
+      "detail": "97.94% occupancy rate hides 15 vacant units against 759 occupied units",
+      "evidence": [
+        {
+          "metric": "pct_occupied",
+          "value": "97.94",
+          "comparison": null
+        },
+        {
+          "metric": "vacant_units",
+          "value": "15",
+          "comparison": null
+        },
+        {
+          "metric": "occupied_units",
+          "value": "759",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:144"
+    },
+    {
+      "scope": "property",
+      "property_code": "144r",
+      "asset_key": null,
+      "category": "unit_mix",
+      "priority": "low",
+      "headline": "One non-revenue unit impacts total mix",
+      "detail": "1 non-revenue unit exists within 775 total units and 759 occupied units",
+      "evidence": [
+        {
+          "metric": "non_revenue_units",
+          "value": "1",
+          "comparison": null
+        },
+        {
+          "metric": "units",
+          "value": "775",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:144"
+    },
+    {
+      "scope": "property",
+      "property_code": "144r",
+      "asset_key": null,
+      "category": "revenue",
+      "priority": "medium",
+      "headline": "Loss to lease indicates rent gap",
+      "detail": "Contract rent of 1557081.66 yields 129207.34 loss to lease against market rent of 1686289.00",
+      "evidence": [
+        {
+          "metric": "contract_rent",
+          "value": "1557081.66",
+          "comparison": null
+        },
+        {
+          "metric": "loss_to_lease",
+          "value": "129207.34",
+          "comparison": null
+        },
+        {
+          "metric": "market_rent",
+          "value": "1686289.00",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:144"
+    },
+    {
+      "scope": "property",
+      "property_code": "144r",
+      "asset_key": null,
+      "category": "trend",
+      "priority": "low",
+      "headline": "Lease charges significantly exceed market rent",
+      "detail": "1636735.63 in lease charges surpasses 1722576.00 market rent by 85840.37",
+      "evidence": [
+        {
+          "metric": "lease_charges",
+          "value": "1636735.63",
+          "comparison": null
+        },
+        {
+          "metric": "market_rent",
+          "value": "1722576.00",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:144"
+    },
+    {
+      "scope": "property",
+      "property_code": "153r",
+      "asset_key": null,
+      "category": "concession",
+      "priority": "high",
+      "headline": "153r carries massive negative balance from concessions",
+      "detail": "Property 153r shows a significant negative balance driven by concessions, which impacts the overall asset balance.",
+      "evidence": [
+        {
+          "metric": "balance",
+          "value": "21723.91",
+          "comparison": null
+        },
+        {
+          "metric": "concessions",
+          "value": "-38414.61",
+          "comparison": null
+        },
+        {
+          "metric": "loss_to_lease",
+          "value": "98253.00",
+          "comparison": null
+        },
+        {
+          "metric": "market_rent",
+          "value": "634512.00",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:153"
+    },
+    {
+      "scope": "property",
+      "property_code": "153r",
+      "asset_key": null,
+      "category": "expiration",
+      "priority": "high",
+      "headline": "153r has 16 expiring leases in May 2026",
+      "detail": "A large cluster of expiring leases is concentrated in May 2026 for property 153r, with 16 leases expiring.",
+      "evidence": [
+        {
+          "metric": "charges_at_risk",
+          "value": "46348.00",
+          "comparison": null
+        },
+        {
+          "metric": "expiring_leases",
+          "value": "16",
+          "comparison": null
+        },
+        {
+          "metric": "expiry_month",
+          "value": "2026-05-01",
+          "comparison": null
+        },
+        {
+          "metric": "property_code",
+          "value": "153r",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:153"
+    },
+    {
+      "scope": "property",
+      "property_code": "153c",
+      "asset_key": null,
+      "category": "occupancy",
+      "priority": "medium",
+      "headline": "153c has very low occupancy at 14.29%",
+      "detail": "Property 153c is underperforming with only 1 occupied unit out of 7 total units.",
+      "evidence": [
+        {
+          "metric": "pct_occupied",
+          "value": "14.29",
+          "comparison": null
+        },
+        {
+          "metric": "occupied_units",
+          "value": "1",
+          "comparison": null
+        },
+        {
+          "metric": "vacant_units",
+          "value": "6",
+          "comparison": null
+        },
+        {
+          "metric": "units",
+          "value": "7",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:153"
+    },
+    {
+      "scope": "property",
+      "property_code": "153a",
+      "asset_key": null,
+      "category": "expiration",
+      "priority": "medium",
+      "headline": "153a has 19 leases expiring through 2027",
+      "detail": "Property 153a has a steady stream of expiring leases, totaling 19 leases across multiple months.",
+      "evidence": [
+        {
+          "metric": "charges_at_risk",
+          "value": "1930.00",
+          "comparison": null
+        },
+        {
+          "metric": "expiring_leases",
+          "value": "1",
+          "comparison": null
+        },
+        {
+          "metric": "expiry_month",
+          "value": "2025-04-01",
+          "comparison": null
+        },
+        {
+          "metric": "property_code",
+          "value": "153a",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:153"
+    },
+    {
+      "scope": "asset",
+      "property_code": null,
+      "asset_key": "153",
+      "category": "unit_mix",
+      "priority": "low",
+      "headline": "Asset 153 has 5 non-revenue units",
+      "detail": "The asset has 5 non-revenue units, which may indicate potential issues or special status.",
+      "evidence": [
+        {
+          "metric": "non_revenue_units",
+          "value": "5",
+          "comparison": null
+        },
+        {
+          "metric": "notice_units",
+          "value": "5",
+          "comparison": null
+        },
+        {
+          "metric": "property_code",
+          "value": "153r",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:153"
+    },
+    {
+      "scope": "asset",
+      "property_code": null,
+      "asset_key": "153",
+      "category": "trend",
+      "priority": "low",
+      "headline": "Asset 153 has 2 future leases scheduled",
+      "detail": "The asset has 2 future leases scheduled, which may impact future occupancy and revenue.",
+      "evidence": [
+        {
+          "metric": "future_leases",
+          "value": "2",
+          "comparison": null
+        },
+        {
+          "metric": "property_code",
+          "value": "153a",
+          "comparison": null
+        },
+        {
+          "metric": "property_code",
+          "value": "153r",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:153"
+    },
+    {
+      "scope": "property",
+      "property_code": "175r",
+      "asset_key": null,
+      "category": "expiration",
+      "priority": "high",
+      "headline": "March 2026 expiration cluster risks 1775.00 in charges at risk",
+      "detail": "Property 175r shows a significant concentration of expiring leases in March 2026 with 17 units expiring. This cluster carries 1775.00 in charges at risk, indicating potential revenue loss if not re-leased at market rates.",
+      "evidence": [
+        {
+          "metric": "charges_at_risk",
+          "value": "1775.00",
+          "comparison": null
+        },
+        {
+          "metric": "expiring_leases",
+          "value": "17",
+          "comparison": null
+        },
+        {
+          "metric": "expiry_month",
+          "value": "2026-03-01",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:175"
+    },
+    {
+      "scope": "property",
+      "property_code": "175r",
+      "asset_key": null,
+      "category": "occupancy",
+      "priority": "medium",
+      "headline": "15 vacant units represent 3.85% vacancy rate",
+      "detail": "Kinwood Apartments has 15 vacant units out of 390 total units, resulting in a 3.85% vacancy rate. This leaves 375 occupied units contributing to the current occupancy status.",
+      "evidence": [
+        {
+          "metric": "vacant_units",
+          "value": "15",
+          "comparison": null
+        },
+        {
+          "metric": "occupied_units",
+          "value": "375",
+          "comparison": null
+        },
+        {
+          "metric": "pct_occupied",
+          "value": "96.15",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:175"
+    },
+    {
+      "scope": "property",
+      "property_code": "175r",
+      "asset_key": null,
+      "category": "revenue",
+      "priority": "medium",
+      "headline": "Market rent of 819064.00 exceeds current lease charges of 4144.00",
+      "detail": "The current lease charges of 4144.00 are significantly below the market rent of 819064.00, suggesting substantial concession load and potential revenue optimization opportunities.",
+      "evidence": [
+        {
+          "metric": "lease_charges",
+          "value": "4144.00",
+          "comparison": null
+        },
+        {
+          "metric": "market_rent",
+          "value": "819064.00",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:175"
+    },
+    {
+      "scope": "property",
+      "property_code": "175r",
+      "asset_key": null,
+      "category": "data_quality",
+      "priority": "low",
+      "headline": "Zero charges at risk across all expiration months",
+      "detail": "All expiration entries for property 175r show 0.00 in charges_at_risk, which may indicate data quality issues or that all expiring leases are fully paid in advance.",
+      "evidence": [
+        {
+          "metric": "charges_at_risk",
+          "value": "0.00",
+          "comparison": null
+        },
+        {
+          "metric": "loss_to_lease",
+          "value": "783424.00",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:175"
+    },
+    {
+      "scope": "property",
+      "property_code": "176r",
+      "asset_key": null,
+      "category": "expiration",
+      "priority": "high",
+      "headline": "Massive March 2026 lease expiration cluster",
+      "detail": "The Alexander faces 23 expiring leases in March 2026, creating immediate renewal pressure despite zero charges at risk.",
+      "evidence": [
+        {
+          "metric": "expiring_leases",
+          "value": "23",
+          "comparison": "null"
+        },
+        {
+          "metric": "expiry_month",
+          "value": "2026-03-01",
+          "comparison": "null"
+        },
+        {
+          "metric": "property_code",
+          "value": "176r",
+          "comparison": "null"
+        }
+      ],
+      "source_chunk": "map:176"
+    },
+    {
+      "scope": "property",
+      "property_code": "183r",
+      "asset_key": null,
+      "category": "expiration",
+      "priority": "high",
+      "headline": "183r faces 17-unit expiration cluster in June 2026",
+      "detail": "Property 183r has a significant concentration of expiring leases in June 2026 with 17 units expiring, requiring immediate lease renewal strategy. The total loss to lease for this cluster is 224358.00 against market rent of 224358.00, indicating no current concessions but high renewal risk.",
+      "evidence": [
+        {
+          "metric": "expiring_leases",
+          "value": "17",
+          "comparison": "null"
+        },
+        {
+          "metric": "loss_to_lease",
+          "value": "224358.00",
+          "comparison": "null"
+        },
+        {
+          "metric": "market_rent",
+          "value": "224358.00",
+          "comparison": "null"
+        },
+        {
+          "metric": "units",
+          "value": "113",
+          "comparison": "null"
+        }
+      ],
+      "source_chunk": "map:183"
+    },
+    {
+      "scope": "property",
+      "property_code": "184r",
+      "asset_key": null,
+      "category": "occupancy",
+      "priority": "medium",
+      "headline": "Lakeshore Preserve occupancy trails portfolio average",
+      "detail": "Property occupancy at 92.11% is below the portfolio average of 95.29%, with 4 vacant units out of 152 total.",
+      "evidence": [
+        {
+          "metric": "pct_occupied",
+          "value": "92.11",
+          "comparison": "95.29"
+        },
+        {
+          "metric": "vacant_units",
+          "value": "4",
+          "comparison": "null"
+        },
+        {
+          "metric": "occupied_units",
+          "value": "140",
+          "comparison": "null"
+        }
+      ],
+      "source_chunk": "map:184"
+    },
+    {
+      "scope": "property",
+      "property_code": "184r",
+      "asset_key": null,
+      "category": "expiration",
+      "priority": "high",
+      "headline": "Significant lease expiration load in Q1-Q2 2026",
+      "detail": "Property faces 8 expiring leases in February 2026 and 16 in March, followed by 16 in April, creating a concentrated renewal window.",
+      "evidence": [
+        {
+          "metric": "expiring_leases",
+          "value": "8",
+          "comparison": "null"
+        },
+        {
+          "metric": "expiring_leases",
+          "value": "16",
+          "comparison": "null"
+        },
+        {
+          "metric": "expiring_leases",
+          "value": "16",
+          "comparison": "null"
+        },
+        {
+          "metric": "expiring_leases",
+          "value": "16",
+          "comparison": "null"
+        }
+      ],
+      "source_chunk": "map:184"
+    },
+    {
+      "scope": "property",
+      "property_code": "184r",
+      "asset_key": null,
+      "category": "revenue",
+      "priority": "high",
+      "headline": "Negative balance indicates significant revenue shortfall",
+      "detail": "Property balance is -1581.00, indicating a deficit relative to market rent of 287288.00 with zero lease charges recorded.",
+      "evidence": [
+        {
+          "metric": "balance",
+          "value": "-1581.00",
+          "comparison": "null"
+        },
+        {
+          "metric": "market_rent",
+          "value": "287288.00",
+          "comparison": "null"
+        },
+        {
+          "metric": "lease_charges",
+          "value": "0.00",
+          "comparison": "null"
+        }
+      ],
+      "source_chunk": "map:184"
+    },
+    {
+      "scope": "property",
+      "property_code": "184r",
+      "asset_key": null,
+      "category": "unit_mix",
+      "priority": "low",
+      "headline": "8 non-revenue units impacting total unit count",
+      "detail": "8 units are classified as non-revenue units out of 152 total units, potentially affecting occupancy calculations and revenue potential.",
+      "evidence": [
+        {
+          "metric": "non_revenue_units",
+          "value": "8",
+          "comparison": "null"
+        },
+        {
+          "metric": "units",
+          "value": "152",
+          "comparison": "null"
+        }
+      ],
+      "source_chunk": "map:184"
+    },
+    {
+      "scope": "property",
+      "property_code": "184r",
+      "asset_key": null,
+      "category": "delinquency",
+      "priority": "low",
+      "headline": "Zero charges at risk across all expiring leases",
+      "detail": "All 15 expiring lease entries show 0.00 charges_at_risk, suggesting no immediate delinquency risk despite high expiration volume.",
+      "evidence": [
+        {
+          "metric": "charges_at_risk",
+          "value": "0.00",
+          "comparison": "null"
+        },
+        {
+          "metric": "expiring_leases",
+          "value": "15",
+          "comparison": "null"
+        }
+      ],
+      "source_chunk": "map:184"
+    },
+    {
+      "scope": "property",
+      "property_code": "184r",
+      "asset_key": null,
+      "category": "trend",
+      "priority": "medium",
+      "headline": "Lease term structure shows declining holdover potential",
+      "detail": "Holdover months drop to zero for expirations from March 2026 through February 2027, indicating reliance on new leases rather than renewals.",
+      "evidence": [
+        {
+          "metric": "holdover_mtm",
+          "value": "0",
+          "comparison": "null"
+        },
+        {
+          "metric": "holdover_mtm",
+          "value": "0",
+          "comparison": "null"
+        },
+        {
+          "metric": "holdover_mtm",
+          "value": "0",
+          "comparison": "null"
+        }
+      ],
+      "source_chunk": "map:184"
+    },
+    {
+      "scope": "property",
+      "property_code": "185r",
+      "asset_key": null,
+      "category": "occupancy",
+      "priority": "medium",
+      "headline": "High vacancy rate with 4 vacant units",
+      "detail": "Waterfront at the Strand shows 94.03% occupancy with 4 vacant units out of 67 total units, creating a negative balance of -1500.00",
+      "evidence": [
+        {
+          "metric": "pct_occupied",
+          "value": "94.03",
+          "comparison": "95.29"
+        },
+        {
+          "metric": "vacant_units",
+          "value": "4",
+          "comparison": "null"
+        },
+        {
+          "metric": "balance",
+          "value": "-1500.00",
+          "comparison": "null"
+        }
+      ],
+      "source_chunk": "map:185"
+    },
+    {
+      "scope": "property",
+      "property_code": "185r",
+      "asset_key": null,
+      "category": "expiration",
+      "priority": "high",
+      "headline": "Significant lease expiration cluster in Q1-Q2 2026",
+      "detail": "Four units expiring in March 2026, followed by eight units each in April and May, totaling 20 expirations with zero holdover months",
+      "evidence": [
+        {
+          "metric": "expiring_leases",
+          "value": "4",
+          "comparison": "null"
+        },
+        {
+          "metric": "expiring_leases",
+          "value": "8",
+          "comparison": "null"
+        },
+        {
+          "metric": "expiring_leases",
+          "value": "8",
+          "comparison": "null"
+        },
+        {
+          "metric": "holdover_mtm",
+          "value": "0",
+          "comparison": "null"
+        }
+      ],
+      "source_chunk": "map:185"
+    },
+    {
+      "scope": "property",
+      "property_code": "185r",
+      "asset_key": null,
+      "category": "revenue",
+      "priority": "medium",
+      "headline": "Market rent potential of 132806.00",
+      "detail": "The property has a market rent value of 132806.00 against a current balance of -1500.00, indicating potential revenue uplift",
+      "evidence": [
+        {
+          "metric": "market_rent",
+          "value": "132806.00",
+          "comparison": "null"
+        },
+        {
+          "metric": "balance",
+          "value": "-1500.00",
+          "comparison": "null"
+        }
+      ],
+      "source_chunk": "map:185"
+    },
+    {
+      "scope": "property",
+      "property_code": "185r",
+      "asset_key": null,
+      "category": "data_quality",
+      "priority": "low",
+      "headline": "Reconciliation shows 1 unit delta",
+      "detail": "Reconciliation details show 63 occupied units versus 62 availability occupied, indicating a 1 unit discrepancy",
+      "evidence": [
+        {
+          "metric": "availability_occupied",
+          "value": "62",
+          "comparison": "63"
+        },
+        {
+          "metric": "detail_occupied",
+          "value": "63",
+          "comparison": "null"
+        }
+      ],
+      "source_chunk": "map:185"
+    },
+    {
+      "scope": "property",
+      "property_code": "185r",
+      "asset_key": null,
+      "category": "trend",
+      "priority": "low",
+      "headline": "Zero lease charges recorded",
+      "detail": "Lease charges are recorded as 0.00, suggesting no recent lease modifications or concessions have been applied",
+      "evidence": [
+        {
+          "metric": "lease_charges",
+          "value": "0.00",
+          "comparison": "null"
+        }
+      ],
+      "source_chunk": "map:185"
+    },
+    {
+      "scope": "property",
+      "property_code": "462a",
+      "asset_key": null,
+      "category": "expiration",
+      "priority": "high",
+      "headline": "Massive lease expiration cluster in May 2023",
+      "detail": "Property 462a faces 29 expiring leases in May 2023 with $39,806 at risk, creating a critical renewal window.",
+      "evidence": [
+        {
+          "metric": "charges_at_risk",
+          "value": "39806.00",
+          "comparison": null
+        },
+        {
+          "metric": "expiring_leases",
+          "value": "29",
+          "comparison": null
+        },
+        {
+          "metric": "expiry_month",
+          "value": "2023-05-01",
+          "comparison": null
+        },
+        {
+          "metric": "property_code",
+          "value": "462a",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "map:462"
+    },
+    {
+      "scope": "property",
+      "property_code": "153a",
+      "asset_key": null,
+      "category": "positioning",
+      "priority": "high",
+      "headline": "Abbot Mill is distressed with significant loss to lease",
+      "detail": "The property is in the distressed quadrant because revenue capture (46.26%) and occupancy (82.61%) are both below the 95.0% threshold. The primary driver is a $27,758.00 loss to lease, which represents a gap of $31,169.30 in billed charges needed to reach the capture threshold. Additionally, there are 4 vacant units out of 23 total, requiring 3 more leased units to reach the occupancy threshold.",
+      "evidence": [
+        {
+          "metric": "loss_to_lease",
+          "value": "27758.00",
+          "comparison": null
+        },
+        {
+          "metric": "charges_to_threshold",
+          "value": "31169.30",
+          "comparison": null
+        },
+        {
+          "metric": "pct_occupied",
+          "value": "82.61",
+          "comparison": "below 95.0"
+        },
+        {
+          "metric": "units_to_threshold",
+          "value": "3",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "positioning:153a"
+    },
+    {
+      "scope": "property",
+      "property_code": "153r",
+      "asset_key": null,
+      "category": "positioning",
+      "priority": "high",
+      "headline": "Abbot Mill is distressed due to vacant units and pricing loss",
+      "detail": "The property sits in the distressed quadrant with 92.89% occupancy and 75.26% revenue capture. The gap to the 95.0% occupancy threshold is 5 units, while the gap to the 95.0% revenue capture threshold is $135,188.26 in additional monthly billed revenue.",
+      "evidence": [
+        {
+          "metric": "pct_occupied",
+          "value": "92.89",
+          "comparison": "below 95.0 threshold"
+        },
+        {
+          "metric": "units_to_threshold",
+          "value": "5",
+          "comparison": null
+        },
+        {
+          "metric": "revenue_capture_pct",
+          "value": "75.26",
+          "comparison": "below 95.0 threshold"
+        },
+        {
+          "metric": "charges_to_threshold",
+          "value": "135188.26",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "positioning:153r"
+    },
+    {
+      "scope": "property",
+      "property_code": "139r",
+      "asset_key": null,
+      "category": "positioning",
+      "priority": "high",
+      "headline": "Distressed Mill Greenwich needs pricing and billing fixes",
+      "detail": "The Mill Greenwich is in the distressed quadrant with 71.55% occupancy and 78.41% revenue capture. The property is leaking revenue due to concessions totaling $1,925.00 and losses to lease totaling $90,938.10. To move to the performing quadrant, the property needs to capture an additional $89,225.23 in billed revenue and fill 3 additional units.",
+      "evidence": [
+        {
+          "metric": "revenue_capture_pct",
+          "value": "78.41",
+          "comparison": "below 95.0 threshold"
+        },
+        {
+          "metric": "pct_occupied",
+          "value": "91.55",
+          "comparison": "below 95.0 threshold"
+        },
+        {
+          "metric": "concessions",
+          "value": "-1925.00",
+          "comparison": null
+        },
+        {
+          "metric": "loss_to_lease",
+          "value": "90938.10",
+          "comparison": null
+        },
+        {
+          "metric": "charges_to_threshold",
+          "value": "89225.23",
+          "comparison": null
+        },
+        {
+          "metric": "units_to_threshold",
+          "value": "3",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "positioning:139r"
+    },
+    {
+      "scope": "property",
+      "property_code": "138r",
+      "asset_key": null,
+      "category": "positioning",
+      "priority": "high",
+      "headline": "Everbend Tarrytown is distressed with high concessions and vacant units",
+      "detail": "The property is in the distressed quadrant because revenue capture (91.28%) and occupancy (94.04%) are both below the 95.0% threshold. Significant revenue is lost to concessions (-46146.00) and loss to lease (28581.00), while 13 units remain vacant. Moving to the performing quadrant requires addressing both gaps: reducing concessions by 46146.00 to reach the capture threshold and leasing 3 additional units to reach the occupancy threshold.",
+      "evidence": [
+        {
+          "metric": "revenue_capture_pct",
+          "value": "91.28",
+          "comparison": "below 95.0"
+        },
+        {
+          "metric": "pct_occupied",
+          "value": "94.04",
+          "comparison": "below 95.0"
+        },
+        {
+          "metric": "concessions",
+          "value": "-46146.00",
+          "comparison": null
+        },
+        {
+          "metric": "vacant_units",
+          "value": "13",
+          "comparison": null
+        },
+        {
+          "metric": "charges_to_threshold",
+          "value": "27529.03",
+          "comparison": null
+        },
+        {
+          "metric": "units_to_threshold",
+          "value": "3",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "positioning:138r"
+    },
+    {
+      "scope": "property",
+      "property_code": "126r",
+      "asset_key": null,
+      "category": "positioning",
+      "priority": "medium",
+      "headline": "Eliminate concessions to capture $18,305.52 in lost revenue",
+      "detail": "The Halden is leaking because it is fully occupied at 96.48% but only captures 93.35% of potential rent. The $18,305.52 gap to the 95% capture threshold is driven entirely by $21,919.14 in concessions, as there is no loss to lease or vacancy. Removing these concessions would move the property to the performing quadrant.",
+      "evidence": [
+        {
+          "metric": "concessions",
+          "value": "-21919.14",
+          "comparison": null
+        },
+        {
+          "metric": "charges_to_threshold",
+          "value": "18305.52",
+          "comparison": null
+        },
+        {
+          "metric": "quadrant",
+          "value": "leaking",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "positioning:126r"
+    },
+    {
+      "scope": "property",
+      "property_code": "144r",
+      "asset_key": null,
+      "category": "positioning",
+      "priority": "low",
+      "headline": "Winners Circle defends performing status with full occupancy",
+      "detail": "Property 144r (Winners Circle) is positioned in the performing quadrant with 97.94% occupancy and 95.02% revenue capture, exceeding both the 95.0% thresholds. No additional units or revenue are required to maintain this position.",
+      "evidence": [
+        {
+          "metric": "pct_occupied",
+          "value": "97.94",
+          "comparison": null
+        },
+        {
+          "metric": "revenue_capture_pct",
+          "value": "95.02",
+          "comparison": null
+        },
+        {
+          "metric": "units_to_threshold",
+          "value": "0",
+          "comparison": null
+        },
+        {
+          "metric": "charges_to_threshold",
+          "value": "0",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "positioning:144r"
+    },
+    {
+      "scope": "property",
+      "property_code": "134r",
+      "asset_key": null,
+      "category": "positioning",
+      "priority": "low",
+      "headline": "Performing: Revenue capture and occupancy both exceed thresholds",
+      "detail": "Property 134r is positioned in the performing quadrant with revenue capture at 97.35% and occupancy at 95.69%, both exceeding the 95.0% thresholds. Charges to threshold is 0, indicating no additional billed revenue is needed to cross the capture line, and units to threshold is 0, indicating no additional leased units are needed to cross the occupancy line.",
+      "evidence": [
+        {
+          "metric": "revenue_capture_pct",
+          "value": "97.35",
+          "comparison": "above 95.0"
+        },
+        {
+          "metric": "pct_occupied",
+          "value": "95.69",
+          "comparison": "above 95.0"
+        },
+        {
+          "metric": "charges_to_threshold",
+          "value": "0",
+          "comparison": null
+        },
+        {
+          "metric": "units_to_threshold",
+          "value": "0",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "positioning:134r"
+    },
+    {
+      "scope": "property",
+      "property_code": "143a",
+      "asset_key": null,
+      "category": "positioning",
+      "priority": "low",
+      "headline": "The Ellsworth maintains performing status with zero gaps",
+      "detail": "The Ellsworth is positioned in the performing quadrant as both revenue capture (99.33%) and occupancy (95.51%) exceed the 95.0% thresholds. With charges_to_threshold at 0 and units_to_threshold at 0, the property requires no levers to defend its position.",
+      "evidence": [
+        {
+          "metric": "revenue_capture_pct",
+          "value": "99.33",
+          "comparison": null
+        },
+        {
+          "metric": "pct_occupied",
+          "value": "95.51",
+          "comparison": null
+        },
+        {
+          "metric": "charges_to_threshold",
+          "value": "0",
+          "comparison": null
+        },
+        {
+          "metric": "units_to_threshold",
+          "value": "0",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "positioning:143a"
+    },
+    {
+      "scope": "property",
+      "property_code": "462a",
+      "asset_key": null,
+      "category": "positioning",
+      "priority": "low",
+      "headline": "Stony Run performs with full occupancy and high capture",
+      "detail": "Stony Run is positioned in the performing quadrant with 95.11% physical occupancy and 99.45% revenue capture. The property has crossed both thresholds, requiring zero additional units or revenue to maintain its status.",
+      "evidence": [
+        {
+          "metric": "pct_occupied",
+          "value": "95.11",
+          "comparison": null
+        },
+        {
+          "metric": "revenue_capture_pct",
+          "value": "99.45",
+          "comparison": null
+        },
+        {
+          "metric": "units_to_threshold",
+          "value": "0",
+          "comparison": null
+        },
+        {
+          "metric": "charges_to_threshold",
+          "value": "0",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "positioning:462a"
+    },
+    {
+      "scope": "property",
+      "property_code": "115r",
+      "asset_key": null,
+      "category": "positioning",
+      "priority": "low",
+      "headline": "Canfield Park defends performing status with full occupancy",
+      "detail": "Property 115r (Canfield Park) sits in the performing quadrant with 96.00% occupancy and 103.64% revenue capture. The occupancy line is already crossed with 0 units to threshold, and the capture line is crossed with 0 additional charges needed. While concessions of -12006.39 and loss to lease of -22830.32 exist, they do not prevent the property from maintaining its strong position.",
+      "evidence": [
+        {
+          "metric": "pct_occupied",
+          "value": "96.00",
+          "comparison": null
+        },
+        {
+          "metric": "revenue_capture_pct",
+          "value": "103.64",
+          "comparison": null
+        },
+        {
+          "metric": "units_to_threshold",
+          "value": "0",
+          "comparison": null
+        },
+        {
+          "metric": "charges_to_threshold",
+          "value": "0",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "positioning:115r"
+    },
+    {
+      "scope": "property",
+      "property_code": "126a",
+      "asset_key": null,
+      "category": "positioning",
+      "priority": "medium",
+      "headline": "Revenue capture exceeds threshold; focus on vacant units",
+      "detail": "The Halden is positioned in the vacancy_led quadrant because revenue capture (107.44%) exceeds the threshold (95.0%) while occupancy (94.74%) falls below it. The property has 1 vacant unit and 1 notice unit, requiring 1 additional leased unit to cross the occupancy line.",
+      "evidence": [
+        {
+          "metric": "revenue_capture_pct",
+          "value": "107.44",
+          "comparison": "above threshold"
+        },
+        {
+          "metric": "pct_occupied",
+          "value": "94.74",
+          "comparison": "below threshold"
+        },
+        {
+          "metric": "vacant_units",
+          "value": "1",
+          "comparison": null
+        },
+        {
+          "metric": "units_to_threshold",
+          "value": "1",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "positioning:126a"
+    },
+    {
+      "scope": "property",
+      "property_code": "138a",
+      "asset_key": null,
+      "category": "positioning",
+      "priority": "low",
+      "headline": "Everbend Tarrytown defends performing status with full occupancy",
+      "detail": "The property is positioned in the performing quadrant with 100.00% occupancy and 110.04% revenue capture, exceeding both the 95.0% thresholds. No levers are required to maintain this position as there are 0 vacant units and 0 charges to threshold.",
+      "evidence": [
+        {
+          "metric": "pct_occupied",
+          "value": "100.00",
+          "comparison": null
+        },
+        {
+          "metric": "revenue_capture_pct",
+          "value": "110.04",
+          "comparison": null
+        },
+        {
+          "metric": "units_to_threshold",
+          "value": "0",
+          "comparison": null
+        },
+        {
+          "metric": "charges_to_threshold",
+          "value": "0",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "positioning:138a"
+    },
+    {
+      "scope": "asset",
+      "property_code": null,
+      "asset_key": "143",
+      "category": "data_quality",
+      "priority": "high",
+      "headline": "143c has zero square footage recorded in rent roll",
+      "detail": "Missing square footage data prevents accurate revenue calculation for 143c unit mix.",
+      "evidence": [
+        {
+          "metric": "square_footage",
+          "value": "0",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "reduce"
+    },
+    {
+      "scope": "asset",
+      "property_code": null,
+      "asset_key": "153",
+      "category": "concession",
+      "priority": "high",
+      "headline": "153r carries massive negative balance from concessions",
+      "detail": "Significant concession load on 153r indicates potential collection issues and revenue shortfall.",
+      "evidence": [
+        {
+          "metric": "negative_balance",
+          "value": "-94467.53",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "reduce"
+    },
+    {
+      "scope": "asset",
+      "property_code": null,
+      "asset_key": "184",
+      "category": "revenue",
+      "priority": "high",
+      "headline": "Negative balance indicates significant revenue shortfall",
+      "detail": "184 shows negative balance indicating a gap between market rent potential and collected charges.",
+      "evidence": [
+        {
+          "metric": "negative_balance",
+          "value": "-94467.53",
+          "comparison": null
+        }
+      ],
+      "source_chunk": "reduce"
+    }
+  ]
+}

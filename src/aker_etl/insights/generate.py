@@ -14,24 +14,29 @@ Two rules the rest of this module exists to enforce:
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from pathlib import Path
+from typing import Any, Literal
 
 from ..config import Settings
 from ..db import connect, scalar
+from .artifact import ArtifactGenerator, ArtifactInsight, ArtifactStats, InsightArtifact, write_artifact
 from .context import (
     build_payload,
     canonical_json,
     estimate_tokens,
     latest_snapshot,
     map_chunks,
+    payload_sha256,
     positioning_chunks,
     reduce_chunk,
+    targets_from_payload,
 )
 from .schema import Insight, InsightBatch, normalise_target, scope_target_ok, target_is_known
 
@@ -146,6 +151,8 @@ class GenerateOutcome:
     elapsed_s: float = 0.0
     dry_run_report: list[tuple[str, int, int]] = field(default_factory=list)
     error: str | None = None
+    artifact_path: str = ""
+    artifact_bytes: int = 0
 
     def render(self) -> str:
         if self.skipped_reason:
@@ -158,6 +165,14 @@ class GenerateOutcome:
                 flag = "" if ctx >= tokens * CTX_HEADROOM else "   <-- TOO SMALL"
                 lines.append(f"{name:<28}{tokens:>8}{ctx:>10}{flag}")
             return "\n".join(lines)
+        if self.artifact_path:
+            if self.status == "refused":
+                return (f"[yellow]no insight survived the evidence check; "
+                        f"wrote {self.artifact_path} with 0 insights[/]")
+            kb = self.artifact_bytes / 1024
+            return (f"[green]wrote {self.artifact_path}[/] ({self.insights_kept} insight(s), "
+                    f"{kb:.1f} KB, payload sha256 {self.prompt_sha256[:12]}…) -- "
+                    f"import with: aker-etl insights import {self.artifact_path}")
         if self.status != "succeeded":
             return f"[red]insights {self.status}:[/] {self.error}"
         return (f"[green]{self.insights_kept} insight(s) stored[/] from {self.map_calls} map + "
@@ -270,6 +285,159 @@ def check_evidence(
 # --------------------------------------------------------------------------- #
 
 
+@dataclass
+class InferenceResult:
+    """The output of the three inference passes, with no database handle involved.
+
+    `chunks[i]` is the source-chunk label for `insights[i]`; the two lists stay
+    index-aligned so a caller that wants to build an artifact can zip them.
+    """
+
+    insights: list[Insight] = field(default_factory=list)
+    chunks: list[str] = field(default_factory=list)
+    calls: int = 0
+    map_calls: int = 0
+    positioning_calls: int = 0
+    reduce_calls: int = 0
+    dropped: int = 0
+    unreachable_reason: str | None = None  # user-facing message; set iff Ollama could not be used
+    fail_run_error: str | None = None      # the same failure, phrased for core.insight_run.error
+    error_detail: str | None = None        # bare exception text; set only when import_failed
+    import_failed: bool = False            # True iff the `ollama` package itself is missing
+
+
+def run_inference(
+    settings: Settings,
+    payload: dict,
+    *,
+    property_codes: frozenset[str],
+    asset_keys: frozenset[str],
+    chunks: list[dict] | None = None,
+) -> InferenceResult:
+    """Map + positioning + reduce passes. No database handle anywhere in here.
+
+    Extracted from generate() so the same three passes serve both the direct-to-
+    database route and the write-an-artifact route. Ollama being unreachable is
+    reported through `unreachable_reason` rather than raised: the caller decides
+    whether that is a warning (route A, the dashboard renders fine without
+    insights) or an error (route B, the user asked for a file and got none).
+
+    `chunks` is the caller's `map_chunks(payload)` if it already has one -- both
+    routes need the count for their own reporting, and map_chunks is pure, so
+    recomputing it here would be the same list built twice.
+    """
+    out = InferenceResult()
+
+    try:
+        import ollama
+    except ImportError as exc:
+        out.fail_run_error = f"ollama package not installed: {exc}"
+        out.unreachable_reason = f"ollama package not installed ({exc})"
+        out.error_detail = str(exc)
+        out.import_failed = True
+        return out
+
+    client = ollama.Client(host=settings.ollama_host)
+    try:
+        client.list()
+    except Exception as exc:  # noqa: BLE001 - unreachable Ollama is a warning, not a crash
+        out.fail_run_error = f"ollama unreachable at {settings.ollama_host}: {exc}"
+        out.unreachable_reason = (
+            f"Ollama unreachable at {settings.ollama_host} -- the dashboard renders "
+            f"fine without insights ({type(exc).__name__})"
+        )
+        return out
+
+    if chunks is None:
+        chunks = map_chunks(payload)
+    headlines: list[dict] = []
+
+    for chunk in chunks:
+        name = f"map:{chunk['asset']['asset_key']}"
+        batch, n_dropped, err = _call(
+            client, settings, chunk, name,
+            num_ctx=settings.aker_insight_num_ctx_map, think=False,
+            property_codes=property_codes, asset_keys=asset_keys,
+        )
+        out.calls += 1
+        out.map_calls += 1
+        out.dropped += n_dropped
+        if err:
+            log.warning("%s: %s", name, err)
+            continue
+        for insight in batch:
+            out.insights.append(insight)
+            out.chunks.append(name)
+            headlines.append({
+                "asset_key": chunk["asset"]["asset_key"],
+                "headline": insight.headline,
+                "priority": insight.priority,
+                "category": insight.category,
+            })
+
+    if settings.aker_insight_positioning:
+        pos_kept, pos_calls, pos_dropped = _positioning_pass(
+            client, settings, payload, property_codes, asset_keys
+        )
+        for insight, name in pos_kept:
+            out.insights.append(insight)
+            out.chunks.append(name)
+        out.calls += pos_calls
+        out.positioning_calls += pos_calls
+        out.dropped += pos_dropped
+
+    red = reduce_chunk(payload, headlines)
+    # think=False here too. With thinking on, qwen3.5:4b spends the entire
+    # generation budget reasoning and returns an empty `content` -- measured
+    # at 2,405 chars of `thinking` and 0 of content at num_predict=1024, and
+    # 8,424/0 at 3,072. The reduce pass is a ranking job over figures that
+    # are already finished, so it loses nothing by answering directly.
+    batch, n_dropped, err = _call(
+        client, settings, red, "reduce",
+        num_ctx=settings.aker_insight_num_ctx_reduce, think=False,
+        property_codes=property_codes, asset_keys=asset_keys,
+    )
+    out.calls += 1
+    out.reduce_calls += 1
+    out.dropped += n_dropped
+    if err:
+        log.warning("reduce: %s", err)
+    else:
+        for insight in batch:
+            out.insights.append(insight)
+            out.chunks.append("reduce")
+
+    return out
+
+
+def _dry_run_report(
+    settings: Settings, payload: dict, chunks: list[dict] | None = None
+) -> list[tuple[str, int, int]]:
+    """Per-chunk token counts, shared by generate()'s and generate_to_file()'s --dry-run."""
+    report: list[tuple[str, int, int]] = []
+    if chunks is None:
+        chunks = map_chunks(payload)
+    for chunk in chunks:
+        text = canonical_json(chunk)
+        report.append(
+            (f"map:{chunk['asset']['asset_key']}", estimate_tokens(text),
+             settings.aker_insight_num_ctx_map)
+        )
+    if settings.aker_insight_positioning:
+        for chunk in positioning_chunks(payload):
+            report.append(
+                (f"positioning:{chunk['property']['property_code']}",
+                 estimate_tokens(canonical_json(chunk)),
+                 settings.aker_insight_num_ctx_map)
+            )
+    red = reduce_chunk(payload, [{"asset_key": c["asset"]["asset_key"],
+                                  "headline": "<map pass output>"} for c in chunks])
+    report.append(
+        ("reduce", estimate_tokens(canonical_json(red)), settings.aker_insight_num_ctx_reduce)
+    )
+    return report
+
+
 def generate(
     settings: Settings,
     *,
@@ -293,24 +461,7 @@ def generate(
         out.chunks = len(chunks)
 
         if dry_run:
-            for chunk in chunks:
-                text = canonical_json(chunk)
-                out.dry_run_report.append(
-                    (f"map:{chunk['asset']['asset_key']}", estimate_tokens(text),
-                     settings.aker_insight_num_ctx_map)
-                )
-            if settings.aker_insight_positioning:
-                for chunk in positioning_chunks(payload):
-                    out.dry_run_report.append(
-                        (f"positioning:{chunk['property']['property_code']}",
-                         estimate_tokens(canonical_json(chunk)),
-                         settings.aker_insight_num_ctx_map)
-                    )
-            red = reduce_chunk(payload, [{"asset_key": c["asset"]["asset_key"],
-                                          "headline": "<map pass output>"} for c in chunks])
-            out.dry_run_report.append(
-                ("reduce", estimate_tokens(canonical_json(red)), settings.aker_insight_num_ctx_reduce)
-            )
+            out.dry_run_report = _dry_run_report(settings, payload, chunks)
             return out
 
         # Idempotency: identical payload + identical model tag = nothing to do.
@@ -342,84 +493,27 @@ def generate(
             )
             insight_run_id = scalar(cur)
 
-        try:
-            import ollama
-        except ImportError as exc:
-            _fail_run(conn, insight_run_id, f"ollama package not installed: {exc}")
-            out.status, out.error = "failed", str(exc)
-            out.skipped_reason = f"ollama package not installed ({exc})"
-            return out
-
-        client = ollama.Client(host=settings.ollama_host)
-        try:
-            client.list()
-        except Exception as exc:  # noqa: BLE001 - unreachable Ollama is a warning, not a crash
-            _fail_run(conn, insight_run_id, f"ollama unreachable at {settings.ollama_host}: {exc}")
-            out.skipped_reason = (
-                f"Ollama unreachable at {settings.ollama_host} -- the dashboard renders "
-                f"fine without insights ({type(exc).__name__})"
-            )
-            return out
-
         property_codes, asset_keys = _known_targets(conn)
-
-        kept: list[tuple[Insight, str]] = []
-        dropped = 0
-        headlines: list[dict] = []
-
-        for chunk in chunks:
-            name = f"map:{chunk['asset']['asset_key']}"
-            batch, n_dropped, err = _call(
-                client, settings, chunk, name,
-                num_ctx=settings.aker_insight_num_ctx_map, think=False,
-                property_codes=property_codes, asset_keys=asset_keys,
-            )
-            out.calls += 1
-            out.map_calls += 1
-            dropped += n_dropped
-            if err:
-                log.warning("%s: %s", name, err)
-                continue
-            for insight in batch:
-                kept.append((insight, sha))
-                headlines.append({
-                    "asset_key": chunk["asset"]["asset_key"],
-                    "headline": insight.headline,
-                    "priority": insight.priority,
-                    "category": insight.category,
-                })
-
-        if settings.aker_insight_positioning:
-            pos_kept, pos_calls, pos_dropped = _positioning_pass(
-                client, settings, payload, sha, property_codes, asset_keys
-            )
-            kept.extend(pos_kept)
-            out.calls += pos_calls
-            out.positioning_calls += pos_calls
-            dropped += pos_dropped
-
-        red = reduce_chunk(payload, headlines)
-        # think=False here too. With thinking on, qwen3.5:4b spends the entire
-        # generation budget reasoning and returns an empty `content` -- measured
-        # at 2,405 chars of `thinking` and 0 of content at num_predict=1024, and
-        # 8,424/0 at 3,072. The reduce pass is a ranking job over figures that
-        # are already finished, so it loses nothing by answering directly.
-        batch, n_dropped, err = _call(
-            client, settings, red, "reduce",
-            num_ctx=settings.aker_insight_num_ctx_reduce, think=False,
-            property_codes=property_codes, asset_keys=asset_keys,
+        res = run_inference(
+            settings, payload, property_codes=property_codes, asset_keys=asset_keys, chunks=chunks
         )
-        out.calls += 1
-        out.reduce_calls += 1
-        dropped += n_dropped
-        if err:
-            log.warning("reduce: %s", err)
-        else:
-            kept.extend((insight, sha) for insight in batch)
+
+        if res.unreachable_reason:
+            _fail_run(conn, insight_run_id, res.fail_run_error or res.unreachable_reason)
+            out.skipped_reason = res.unreachable_reason
+            if res.import_failed:
+                out.status, out.error = "failed", res.error_detail
+            return out
+
+        kept = [(insight, sha) for insight in res.insights]
 
         out.insights_kept = _persist(
             conn, snapshot_id, insight_run_id, settings.aker_insight_model, kept, force=True)
-        out.insights_dropped = dropped
+        out.insights_dropped = res.dropped
+        out.calls = res.calls
+        out.map_calls = res.map_calls
+        out.positioning_calls = res.positioning_calls
+        out.reduce_calls = res.reduce_calls
         out.status = "succeeded" if kept else "refused"
 
         with conn.cursor() as cur:
@@ -434,6 +528,101 @@ def generate(
     return out
 
 
+def generate_to_file(
+    settings: Settings,
+    out_path: Path,
+    *,
+    as_of: dt.date | None = None,
+    payload_file: Path | None = None,
+    dry_run: bool = False,
+) -> GenerateOutcome:
+    """Route B: inference to a self-describing JSON artifact, no persistence. PLAN3 5.3.3."""
+    started = time.monotonic()
+    out = GenerateOutcome(model=settings.aker_insight_model)
+
+    if not settings.aker_insight_enabled and not dry_run:
+        out.skipped_reason = "AKER_INSIGHT_ENABLED=false"
+        return out
+
+    if payload_file is not None:
+        try:
+            payload = json.loads(payload_file.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("root is not a JSON object")
+            as_of_date = dt.date.fromisoformat(payload["as_of"])
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise ValueError(f"{payload_file} is not an aker-etl payload: {exc}") from exc
+        sha = payload_sha256(payload)
+        property_codes, asset_keys = targets_from_payload(payload)
+        source: Literal["database", "file"] = "file"
+    else:
+        with connect(settings, autocommit=True) as conn:
+            _snapshot_id, as_of_date = latest_snapshot(conn, as_of)
+            payload, sha = build_payload(conn, as_of_date)
+            property_codes, asset_keys = _known_targets(conn)
+        source = "database"
+
+    out.prompt_sha256 = sha
+    chunks = map_chunks(payload)
+    out.chunks = len(chunks)
+
+    if dry_run:
+        out.dry_run_report = _dry_run_report(settings, payload, chunks)
+        return out
+
+    res = run_inference(
+        settings, payload, property_codes=property_codes, asset_keys=asset_keys, chunks=chunks
+    )
+
+    if res.unreachable_reason:
+        out.status = "failed"
+        out.error = res.unreachable_reason
+        return out
+
+    artifact = InsightArtifact(
+        as_of=as_of_date,
+        prompt_sha256=sha,
+        model=settings.aker_insight_model,
+        generated_at=dt.datetime.now(dt.timezone.utc),
+        payload_source=source,
+        generator=ArtifactGenerator(
+            ollama_host=settings.ollama_host,
+            num_ctx_map=settings.aker_insight_num_ctx_map,
+            num_ctx_reduce=settings.aker_insight_num_ctx_reduce,
+            num_predict=NUM_PREDICT,
+            positioning=settings.aker_insight_positioning,
+            seed=7,
+        ),
+        stats=ArtifactStats(
+            chunks=out.chunks,
+            calls=res.calls,
+            map_calls=res.map_calls,
+            positioning_calls=res.positioning_calls,
+            reduce_calls=res.reduce_calls,
+            insights_kept=len(res.insights),
+            insights_dropped=res.dropped,
+            elapsed_s=time.monotonic() - started,
+        ),
+        insights=[
+            ArtifactInsight(**i.model_dump(), source_chunk=c)
+            for i, c in zip(res.insights, res.chunks, strict=True)
+        ],
+    )
+    n_bytes = write_artifact(artifact, out_path)
+
+    out.insights_kept = len(res.insights)
+    out.insights_dropped = res.dropped
+    out.calls = res.calls
+    out.map_calls = res.map_calls
+    out.positioning_calls = res.positioning_calls
+    out.reduce_calls = res.reduce_calls
+    out.status = "succeeded" if res.insights else "refused"
+    out.elapsed_s = time.monotonic() - started
+    out.artifact_path = str(out_path)
+    out.artifact_bytes = n_bytes
+    return out
+
+
 def _known_targets(conn) -> tuple[frozenset[str], frozenset[str]]:
     """Every property code and asset key that exists, for the target check."""
     with conn.cursor() as cur:
@@ -443,7 +632,7 @@ def _known_targets(conn) -> tuple[frozenset[str], frozenset[str]]:
 
 
 def _positioning_pass(
-    client, settings: Settings, payload: dict, sha: str,
+    client, settings: Settings, payload: dict,
     property_codes: frozenset[str], asset_keys: frozenset[str],
 ) -> tuple[list[tuple[Insight, str]], int, int]:
     """One model call per plottable property: quadrant-movement advice.
@@ -454,7 +643,7 @@ def _positioning_pass(
     these are facts, not judgements, and forcing them afterwards would be too
     late: check_evidence would already have dropped a mis-scoped reply before
     the caller ever saw it.
-    Returns (kept insights with their payload hash, calls made, dropped count).
+    Returns (kept insights with their source-chunk label, calls made, dropped count).
     """
     kept: list[tuple[Insight, str]] = []
     calls = 0
@@ -493,7 +682,7 @@ def _positioning_pass(
             dropped += len(batch) - 1
             batch = batch[:1]
         for insight in batch:
-            kept.append((insight, sha))
+            kept.append((insight, name))
     return kept, calls, dropped
 
 

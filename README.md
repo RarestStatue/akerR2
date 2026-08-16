@@ -129,6 +129,55 @@ quadrant. Every property dialog shows this even without Ollama: when no stored
 `positioning` insight exists, the panel falls back to deterministic,
 SQL-templated guidance and is marked **computed** rather than with a model tag.
 
+#### Detached inference: generate to a file, import later
+
+The command above does everything in one step: reads the database, calls
+Ollama, and writes `core.insight` in the same process. A second route splits
+that into two commands, with a JSON file in between:
+
+```bash
+aker-etl insights generate --out insights.json   # DB -> Ollama -> file, no database write
+aker-etl insights import insights.json           # file -> re-verify vs DB -> DB
+```
+
+`generate --out` touches neither `core.insight` nor `core.insight_run` -- it
+only reads the database for context and writes a self-describing JSON
+artifact. `insights import` is the only command that stores anything: it
+rebuilds the payload from the database, re-checks every cited figure and every
+property/asset target against it, and only then writes.
+
+Inference can also run with **no database at all**, by handing it a payload
+file instead of a live connection:
+
+```bash
+aker-etl export-json payload.json                                       # DB -> file
+aker-etl insights generate --from payload.json --out insights.json      # file -> Ollama -> file
+aker-etl insights import insights.json                                  # file -> re-verify vs DB -> DB
+```
+
+The middle command needs no Postgres connection, so it can run on a different
+machine (a GPU box, for instance) than the one holding the database.
+
+A few things follow from `import` re-verifying rather than trusting the file:
+
+* **Every cited figure is re-checked.** Edit one `evidence.value` to an
+  invented number and only that insight is dropped -- named in the output --
+  while the rest import normally.
+* **Every target is re-checked.** An insight pointing at a property code that
+  does not exist in `core.property` is dropped the same way.
+* **Import replaces the snapshot's insights wholesale**, the same as route A:
+  it deletes what is there for that `as_of` date and inserts what survived the
+  check. There is no partial merge.
+* **A stale artifact is refused.** If the database has changed since the file
+  was generated (the payload hash no longer matches), `import` refuses and
+  tells you to regenerate, or pass `--allow-stale` to import anyway against
+  the current data -- every figure still has to survive the re-check, the
+  import prints which two hashes it reconciled, and the file's original hash is
+  kept in `core.insight_run.error` for provenance.
+* **An empty artifact is refused** (`--allow-empty` to override), because
+  combined with wholesale replacement, importing an empty file would silently
+  wipe the snapshot's insights.
+
 ### Shutting down
 
 ```bash
@@ -148,10 +197,17 @@ aker-etl validate [--strict] [--run-id N]
 aker-etl status                    Recent runs + the golden-number check
 aker-etl serve [--host H] [--port P]
 aker-etl insights generate [--snapshot DATE] [--force] [--dry-run]
+                           [--from PAYLOAD.json] [--out ARTIFACT.json]
+aker-etl insights import ARTIFACT.json [--allow-stale] [--allow-empty]
 aker-etl insights show [--snapshot DATE] [--scope portfolio|asset|property]
 aker-etl export-json PATH          Dump the analytical payload
 aker-etl reset --yes               TRUNCATE core.* and raw.* (never drops schemas)
 ```
+
+`--out` writes the insights to a file instead of the database; `--from` reads
+the context payload from a file instead of the database, so inference can run
+on a machine with no Postgres; `insights import` re-verifies the file against
+the database and stores it.
 
 `--dry-run` parses and reconciles without writing to the database - the quickest
 way to see whether a new drop of files still matches the expected format.

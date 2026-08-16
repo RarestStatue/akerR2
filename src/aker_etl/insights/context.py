@@ -201,6 +201,24 @@ def build_payload(
     return payload, payload_sha256(payload)
 
 
+def targets_from_payload(payload: dict) -> tuple[frozenset[str], frozenset[str]]:
+    """The property codes and asset keys present in a payload.
+
+    The offline stand-in for generate._known_targets(), which reads core.property.
+    This set is drawn from mart.property_snapshot_kpi for one snapshot and can in
+    principle be a subset of the table; that only ever makes the offline target
+    check stricter, and import re-checks against the database anyway, so the
+    database stays authoritative.
+    """
+    codes = frozenset(
+        str(p["property_code"]) for p in payload.get("properties", []) if p.get("property_code")
+    )
+    keys = frozenset(
+        str(a["asset_key"]) for a in payload.get("assets", []) if a.get("asset_key")
+    )
+    return codes, keys
+
+
 def map_chunks(payload: dict) -> list[dict]:
     """One chunk per asset: its books, charge mix, expirations, LTL, reconciliation.
 

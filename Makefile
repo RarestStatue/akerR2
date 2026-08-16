@@ -11,6 +11,7 @@ COMPOSE := docker compose -f docker/docker-compose.yml --env-file .env
 .DEFAULT_GOAL := help
 .PHONY: help venv install db-up db-down db-logs init-db load load-dry validate \
         validate-strict status serve insights insights-dry insights-show \
+        insights-json insights-import \
         export-json reset test test-unit test-integration lint typecheck check clean
 
 help: ## Show this help
@@ -82,6 +83,12 @@ insights-dry: ## Build and cost the context payload without calling the model
 
 insights-show: ## Print the stored insights
 	$(CLI) insights show
+
+insights-json: ## Generate insights to insights.json instead of the database
+	$(CLI) insights generate --out insights.json
+
+insights-import: ## Verify insights.json against the database and store it
+	$(CLI) insights import insights.json
 
 # --- quality ---------------------------------------------------------------
 
