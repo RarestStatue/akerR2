@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from psycopg.conninfo import make_conninfo
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -61,10 +62,16 @@ class Settings(BaseSettings):
 
     @property
     def dsn(self) -> str:
-        return (
-            f"host={self.postgres_host} port={self.postgres_port} "
-            f"dbname={self.postgres_db} user={self.postgres_user} "
-            f"password={self.postgres_password}"
+        # make_conninfo, not an f-string: libpq splits keyword/value strings on
+        # whitespace and needs values containing a space, quote or backslash to be
+        # quoted and escaped. A password with a space in it produced a malformed
+        # string that libpq rejected with 'missing "=" after ...'.
+        return make_conninfo(
+            host=self.postgres_host,
+            port=self.postgres_port,
+            dbname=self.postgres_db,
+            user=self.postgres_user,
+            password=self.postgres_password,
         )
 
     @property

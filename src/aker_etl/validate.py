@@ -111,22 +111,28 @@ def run_validations(cur, run_id: int, snapshot_ids: list[int]) -> dict[str, int]
         emit_all("summary_group_charges_vs_detail", "error", charge_bad)
 
     # --- availability vs detail (warning: 153c is a real upstream discrepancy) - #
+    # snapshot_id is in the GROUP BY on purpose: unit_availability has one row per
+    # (snapshot, property), so grouping on (property_code, units) alone collapses
+    # two snapshots that report the same unit count into one group and doubles the
+    # lease count, firing this warning on every property from the second load on.
     cur.execute(
         """
-        SELECT p.property_code, ua.units,
+        SELECT ua.snapshot_id, p.property_code, ua.units,
                count(*) FILTER (WHERE l.section = 'current') AS detail_units
         FROM core.unit_availability ua
         JOIN core.property p ON p.property_id = ua.property_id
         LEFT JOIN core.lease l ON l.snapshot_id = ua.snapshot_id
                               AND l.property_id = ua.property_id
         WHERE ua.snapshot_id = ANY(%s)
-        GROUP BY p.property_code, ua.units
+        GROUP BY ua.snapshot_id, p.property_code, ua.units
         HAVING ua.units <> count(*) FILTER (WHERE l.section = 'current')
+        ORDER BY 1, 2
         """,
         (snapshot_ids,),
     )
     emit_all("availability_units_vs_detail", "warning", [
-        {"property_code": r[0], "availability_units": r[1], "detail_units": r[2]}
+        {"snapshot_id": r[0], "property_code": r[1],
+         "availability_units": r[2], "detail_units": r[3]}
         for r in cur.fetchall()
     ])
 

@@ -7,14 +7,15 @@ the page renders fully when that table is empty.
 
 from __future__ import annotations
 
+import atexit
 import datetime as dt
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-import psycopg
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+from psycopg_pool import ConnectionPool
 
 from ..config import get_settings
 from ..insights.fallback import positioning_fallback
@@ -23,6 +24,11 @@ STATIC = Path(__file__).parent / "static"
 
 app = FastAPI(title="Aker Rent Roll", docs_url="/api/docs", redoc_url=None)
 _settings = get_settings()
+# One pool for the process, not one connection per _q() call: a hot endpoint like
+# property_detail runs eight queries, and connecting fresh for each is churn as
+# well as eight separate transaction snapshots that a concurrent load can straddle.
+_pool = ConnectionPool(_settings.dsn, kwargs={"autocommit": True}, open=True)
+atexit.register(_pool.close)
 
 # Single source of truth for quadrant labels/hints and exclusion-reason text,
 # shared by /api/matrix and the property dialog so the UI never hard-codes them.
@@ -44,10 +50,6 @@ EXCLUSION_REASONS = {
 }
 
 
-def _conn() -> psycopg.Connection:
-    return psycopg.connect(_settings.dsn, autocommit=True)
-
-
 def _jsonable(v: Any) -> Any:
     if isinstance(v, Decimal):
         return float(v)
@@ -57,7 +59,7 @@ def _jsonable(v: Any) -> Any:
 
 
 def _q(sql: str, params: tuple = ()) -> list[dict]:
-    with _conn() as conn, conn.cursor() as cur:
+    with _pool.connection() as conn, conn.cursor() as cur:
         cur.execute(sql, params)
         # `description` is None only for statements that return no result set;
         # every caller here runs a SELECT.
@@ -379,16 +381,24 @@ def quality(as_of: str | None = None) -> dict:
         "issues": _q(
             """SELECT severity::text AS severity, rule, count(*) AS n
                FROM raw.load_issue
-               WHERE run_id = (SELECT max(run_id) FROM raw.ingest_run WHERE status <> 'running')
+               WHERE run_id IN (SELECT DISTINCT sf.run_id
+                                FROM core.lease l
+                                JOIN raw.source_file sf ON sf.file_id = l.file_id
+                                WHERE l.snapshot_id = %s)
                GROUP BY severity, rule
-               ORDER BY CASE severity WHEN 'error' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, rule"""
+               ORDER BY CASE severity WHEN 'error' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, rule""",
+            (snap,),
         ),
         "issue_detail": _q(
             """SELECT severity::text AS severity, rule, detail
                FROM raw.load_issue
-               WHERE run_id = (SELECT max(run_id) FROM raw.ingest_run WHERE status <> 'running')
+               WHERE run_id IN (SELECT DISTINCT sf.run_id
+                                FROM core.lease l
+                                JOIN raw.source_file sf ON sf.file_id = l.file_id
+                                WHERE l.snapshot_id = %s)
                  AND severity <> 'info'
-               ORDER BY severity, rule LIMIT 100"""
+               ORDER BY severity, rule LIMIT 100""",
+            (snap,),
         ),
         "runs": _q(
             """SELECT run_id, status::text AS status, started_at, finished_at, files_loaded,

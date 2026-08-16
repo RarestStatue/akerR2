@@ -83,18 +83,21 @@ def load(
         console.print(f"[red]structural failure:[/] {type(exc).__name__}: {exc}")
         raise typer.Exit(EXIT_STRUCTURAL) from exc
 
-    _print_load_result(result, dry_run=dry_run)
+    _print_load_result(result, dry_run=dry_run, only=only)
     raise typer.Exit(EXIT_ERRORS if result.errors or result.files_failed else EXIT_OK)
 
 
-def _print_load_result(result, *, dry_run: bool) -> None:
+def _print_load_result(result, *, dry_run: bool, only: Optional[str] = None) -> None:
     t = Table(title="dry run (nothing written)" if dry_run else f"ingest run {result.run_id}",
               show_header=True)
     t.add_column("metric")
     t.add_column("value", justify="right")
     t.add_column("expected", justify="right")
+    # --only halves the expected file count (one of the two file kinds is
+    # skipped entirely), so the golden 50 is only meaningful on a full load.
+    files_seen_expected = "" if only else GOLDEN["rent_roll_files"] + GOLDEN["availability_files"]
     rows = [
-        ("files seen", result.files_seen, 50),
+        ("files seen", result.files_seen, files_seen_expected),
         ("files loaded", result.files_loaded, ""),
         ("files skipped", result.files_skipped, ""),
         ("files failed", result.files_failed, 0),
@@ -270,7 +273,7 @@ def insights_generate(
     as_of = dt.date.fromisoformat(snapshot) if snapshot else None
     outcome = generate(s, as_of=as_of, force=force, dry_run=dry_run)
     console.print(outcome.render())
-    raise typer.Exit(EXIT_OK)
+    raise typer.Exit(EXIT_ERRORS if outcome.status == "failed" else EXIT_OK)
 
 
 @insights_app.command("show")
@@ -334,7 +337,11 @@ def export_json(out: Path = typer.Argument(..., help="Write the insight context 
     with connect(s, autocommit=True) as conn:
         payload, sha = build_payload(conn)
     out.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    console.print(f"[green]wrote {out}[/] ({out.stat().st_size / 1024:.1f} KB, sha256 {sha[:12]}…)")
+    # sha is over canonical_json(payload), not this pretty-printed file -- the file
+    # is written indented for eyeballing, so its own bytes hash to something else.
+    console.print(
+        f"[green]wrote {out}[/] ({out.stat().st_size / 1024:.1f} KB, payload sha256 {sha[:12]}…)"
+    )
 
 
 if __name__ == "__main__":

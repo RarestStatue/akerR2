@@ -214,6 +214,8 @@
           <option>future</option><option>model</option><option>down</option>
         </select>
         <input id="f-q" placeholder="unit or resident…" size="18">
+        <button id="unit-prev">&larr; prev</button>
+        <button id="unit-next">next &rarr;</button>
         <span class="muted" id="unit-count"></span>
       </div>
       <div class="scroll"><table id="unit-table"></table></div>
@@ -279,7 +281,10 @@ function table(el, cols, rows, opts = {}) {
     cols.map(c => `<td class="${c.num?"num":""}">${c.render ? c.render(r) : esc(r[c.key])}</td>`).join("") +
     "</tr>").join("") + "</tbody>";
   el.innerHTML = head + body;
-  let dir = {};
+  // On the element, not in this closure: the sort handler re-enters table() to
+  // render, and a closure-local map would be recreated empty on every render, so
+  // `!undefined` made every click sort ascending and nothing ever reversed.
+  const dir = el._sortDir || (el._sortDir = {});
   el.querySelectorAll("th").forEach(th => th.onclick = () => {
     const c = cols[+th.dataset.i];
     dir[c.key] = !dir[c.key];
@@ -657,13 +662,22 @@ async function openProperty(code, opts = {}) {
   if (!$("#dlg").open) $("#dlg").showModal();
 }
 
+const UNIT_LIMIT = 200;
+let UNIT_OFFSET = 0;
+
 async function loadUnits() {
   const p = new URLSearchParams();
   if ($("#f-prop").value) p.set("property_code", $("#f-prop").value);
   if ($("#f-status").value) p.set("status", $("#f-status").value);
   if ($("#f-q").value.trim()) p.set("q", $("#f-q").value.trim());
+  p.set("limit", UNIT_LIMIT);
+  p.set("offset", UNIT_OFFSET);
   const d = await api("/api/units?" + p);
-  $("#unit-count").textContent = `${num(d.total)} matching lease blocks${d.total > d.rows.length ? ` (showing ${d.rows.length})` : ""}`;
+  const from = d.total ? UNIT_OFFSET + 1 : 0;
+  const to = UNIT_OFFSET + d.rows.length;
+  $("#unit-count").textContent = `${num(d.total)} matching lease blocks${d.total > d.rows.length ? ` (showing ${num(from)}–${num(to)})` : ""}`;
+  $("#unit-prev").disabled = UNIT_OFFSET === 0;
+  $("#unit-next").disabled = to >= d.total;
   table($("#unit-table"), [
     {key:"property_code", label:"Property"},
     {key:"unit_code", label:"Unit"},
@@ -683,6 +697,8 @@ async function loadUnits() {
 }
 
 async function openLease(r) {
+  PICKER_STACK = null;
+  $("#dlg-back-slot").innerHTML = "";
   const charges = await api(`/api/lease/${r.lease_id}/charges`);
   $("#dlg-title").textContent = `${r.property_code} · unit ${r.unit_code} · ${r.occupancy_status}`;
   const sum = charges.reduce((a,c) => a + Number(c.amount), 0);
@@ -701,7 +717,7 @@ async function openLease(r) {
     {key:"amount", label:"Amount", num:true,
      render:c=>`<span class="${c.amount<0?"neg":""}">${money2(c.amount)}</span>`},
   ], charges);
-  $("#dlg").showModal();
+  if (!$("#dlg").open) $("#dlg").showModal();
 }
 
 async function loadInsights() {
@@ -762,17 +778,30 @@ async function loadQuality() {
   ], d.charge_codes);
 }
 
-["f-prop","f-status"].forEach(id => $("#"+id).onchange = loadUnits);
-let t; $("#f-q").oninput = () => { clearTimeout(t); t = setTimeout(loadUnits, 250); };
+["f-prop","f-status"].forEach(id => $("#"+id).onchange = () => { UNIT_OFFSET = 0; loadUnits(); });
+let t; $("#f-q").oninput = () => { UNIT_OFFSET = 0; clearTimeout(t); t = setTimeout(loadUnits, 250); };
+$("#unit-prev").onclick = () => { UNIT_OFFSET = Math.max(0, UNIT_OFFSET - UNIT_LIMIT); loadUnits(); };
+$("#unit-next").onclick = () => { UNIT_OFFSET += UNIT_LIMIT; loadUnits(); };
 
 (async () => {
   try {
     await loadSummary();
-    await Promise.all([loadMatrix(), loadUnits(), loadInsights(), loadQuality()]);
   } catch (e) {
     document.querySelector("main").innerHTML =
       `<div class="empty">${esc(e.detail || e.message || "Failed to load. Is the database up and loaded?")}</div>`;
+    return;
   }
+  // allSettled, not all: one tab's endpoint failing (e.g. /api/insights 500) must
+  // not blank the other tabs that already loaded fine.
+  const tabs = [["matrix", loadMatrix], ["units", loadUnits], ["insights", loadInsights], ["quality", loadQuality]];
+  const results = await Promise.allSettled(tabs.map(([, fn]) => fn()));
+  results.forEach((res, i) => {
+    if (res.status !== "rejected") return;
+    const [id] = tabs[i];
+    const e = res.reason;
+    const card = document.querySelector(`#${id} .card`) || document.querySelector(`#${id}`);
+    card.innerHTML = `<div class="empty">${esc(e.detail || e.message || "Failed to load.")}</div>`;
+  });
 })();
 </script>
 </body>

@@ -50,6 +50,24 @@ class InsightBatch(BaseModel):
     insights: list[Insight] = Field(default_factory=list, max_length=12)
 
 
+def _canonical(value: str | None, known: frozenset[str]) -> str | None:
+    """Return the known set's own spelling of `value`, matched case-insensitively.
+
+    core.property.property_code is citext, so '115R' and '115r' are one book to
+    Postgres but two strings to a Python `in` test. Without this, an insight that
+    differs from the stored code only in case is dropped as a non-existent target.
+    Returns `value` unchanged when there is no match, so the existing gates still
+    reject a genuinely unknown target.
+    """
+    if value is None or not known or value in known:
+        return value
+    folded = value.casefold()
+    for candidate in known:
+        if candidate.casefold() == folded:
+            return candidate
+    return value
+
+
 def normalise_target(
     insight: Insight,
     *,
@@ -75,7 +93,14 @@ def normalise_target(
     Pass the known identifier sets to get case 2. With them empty this does case
     1 only.
     """
-    code, key = insight.property_code, insight.asset_key
+    # Canonicalise against the union: the point is to fix the *spelling* before
+    # any membership test, and case 2 below deliberately tests a value from one
+    # field against the other field's set.
+    known = property_codes | asset_keys
+    code = _canonical(insight.property_code, known)
+    key = _canonical(insight.asset_key, known)
+    if (code, key) != (insight.property_code, insight.asset_key):
+        insight = insight.model_copy(update={"property_code": code, "asset_key": key})
 
     # Only re-scope when the value is unambiguous: absent from the set its own
     # scope implies, and present in the other one.

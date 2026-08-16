@@ -77,8 +77,15 @@ CREATE TABLE IF NOT EXISTS core.lease (
   CONSTRAINT lease_resident_presence CHECK (
     (occupancy_status IN ('vacant','model','down') AND resident_id IS NULL)
     OR (occupancy_status IN ('occupied','notice','future') AND resident_id IS NOT NULL)),
-  CONSTRAINT lease_notice_has_moveout CHECK (
-    (occupancy_status = 'notice') = (move_out IS NOT NULL)),
+  -- Implication, not biconditional. A notice row must carry a move-out date,
+  -- but the reverse is false in the source: a future-section row or a
+  -- VACANT/MODEL/DOWN sentinel can legitimately print one, and derive_status()
+  -- resolves those to 'future'/'vacant'/'model'/'down' by design. The old
+  -- biconditional turned one such cell into a COPY failure that rolled back the
+  -- whole ingest run; the parser records it as a warning and keeps the row
+  -- (rent_roll.py sentinel_field_violation), which is the intended behaviour.
+  CONSTRAINT lease_notice_implies_moveout CHECK (
+    occupancy_status <> 'notice' OR move_out IS NOT NULL),
   CONSTRAINT lease_date_order CHECK (
     move_out IS NULL OR move_in IS NULL OR move_out >= move_in)
 );
@@ -151,3 +158,11 @@ CREATE TABLE IF NOT EXISTS core.unit_availability (
 --    not people, so resident_id is NULL and occupancy_status carries the meaning.
 --  * unit.unit_sqft (latest observed) and lease.unit_sqft (as printed at the
 --    snapshot) are both kept; they can legitimately drift between snapshots.
+
+-- Migration for databases created before the constraint was weakened (BUG.md 1).
+-- DROP IF EXISTS on both names, then ADD, so this is idempotent and applies
+-- cleanly whether the table was just created above or already existed.
+ALTER TABLE core.lease DROP CONSTRAINT IF EXISTS lease_notice_has_moveout;
+ALTER TABLE core.lease DROP CONSTRAINT IF EXISTS lease_notice_implies_moveout;
+ALTER TABLE core.lease ADD CONSTRAINT lease_notice_implies_moveout
+  CHECK (occupancy_status <> 'notice' OR move_out IS NOT NULL);

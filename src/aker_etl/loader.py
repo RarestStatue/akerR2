@@ -274,7 +274,13 @@ def _load_txn(
         log.error("parse failed: %s -- %s", Path(path_str).name, err)
     log.info("parsed %d file(s) in %.2fs", len(parsed), time.monotonic() - t0)
 
+    # Before the early return: when every file fails, section 11 is never reached,
+    # and raw.load_issue -- the durable record the Quality tab reads -- would carry
+    # no reason at all for the failed run.
     if not parsed:
+        for path_str, err in failures:
+            _issue(cur, run_id, None, "error", "file_parse_failed", None,
+                   {"file": Path(path_str).name, "error": err})
         _finish_run(cur, run_id, result)
         return
 

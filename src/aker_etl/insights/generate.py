@@ -417,8 +417,8 @@ def generate(
         else:
             kept.extend((insight, sha) for insight in batch)
 
-        _persist(conn, snapshot_id, insight_run_id, settings.aker_insight_model, kept, force=True)
-        out.insights_kept = len(kept)
+        out.insights_kept = _persist(
+            conn, snapshot_id, insight_run_id, settings.aker_insight_model, kept, force=True)
         out.insights_dropped = dropped
         out.status = "succeeded" if kept else "refused"
 
@@ -576,9 +576,10 @@ def _call(client, settings: Settings, chunk: dict, name: str, *, num_ctx: int, t
 
 
 def _persist(conn, snapshot_id: int, insight_run_id: int, model: str,
-             kept: list[tuple[Insight, str]], *, force: bool) -> None:
+             kept: list[tuple[Insight, str]], *, force: bool) -> int:
     from psycopg.types.json import Jsonb
 
+    written = 0
     with conn.cursor() as cur:
         cur.execute("SELECT property_code::text, property_id FROM core.property")
         pids = {code: pid for code, pid in cur.fetchall()}
@@ -601,6 +602,8 @@ def _persist(conn, snapshot_id: int, insight_run_id: int, model: str,
                  Jsonb([e.model_dump(exclude_none=True) for e in insight.evidence]),
                  model, sha),
             )
+            written += 1
+    return written
 
 
 def _fail_run(conn, insight_run_id: int, error: str) -> None:

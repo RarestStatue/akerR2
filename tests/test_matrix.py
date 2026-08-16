@@ -179,3 +179,46 @@ def test_priority_mapping_matches_quadrant():
         "vacancy_led": "medium",
         "performing": "low",
     }
+
+
+def test_dsn_quotes_a_password_containing_a_space():
+    """BUG.md 3: libpq splits on whitespace, so values must be quoted."""
+    import psycopg
+
+    from aker_etl.config import Settings
+
+    s = Settings()
+    s.postgres_password = "p@ss word"
+    assert psycopg.conninfo.conninfo_to_dict(s.dsn)["password"] == "p@ss word"
+
+
+def test_a_miscased_property_code_is_canonicalised_not_dropped():
+    """BUG.md 5: property_code is citext, so case must not decide existence."""
+    from aker_etl.insights.generate import check_evidence
+    from aker_etl.insights.schema import Insight, normalise_target
+
+    codes = frozenset({"115r"})
+    raw = Insight(scope="property", property_code="115R", category="occupancy",
+                  priority="low", headline="Occupancy note here",
+                  detail="Detail text long enough.",
+                  evidence=[{"metric": "pct_occupied", "value": "96.0"}])
+    fixed = normalise_target(raw, property_codes=codes, asset_keys=frozenset())
+    assert fixed.property_code == "115r"
+    ok, why = check_evidence(fixed, {"96"}, property_codes=codes, asset_keys=frozenset())
+    assert ok, why
+
+
+def test_an_unknown_property_code_is_still_rejected():
+    """The canonicalisation must not turn the existence check into a no-op."""
+    from aker_etl.insights.generate import check_evidence
+    from aker_etl.insights.schema import Insight, normalise_target
+
+    codes = frozenset({"115r"})
+    raw = Insight(scope="property", property_code="999z", category="occupancy",
+                  priority="low", headline="Occupancy note here",
+                  detail="Detail text long enough.",
+                  evidence=[{"metric": "pct_occupied", "value": "96.0"}])
+    fixed = normalise_target(raw, property_codes=codes, asset_keys=frozenset())
+    ok, why = check_evidence(fixed, {"96"}, property_codes=codes, asset_keys=frozenset())
+    assert not ok
+    assert "does not exist" in (why or "")

@@ -144,9 +144,12 @@ def build_payload(
         data_quality = _rows(cur, """
             SELECT rule, severity::text AS severity, count(*) AS n
             FROM raw.load_issue
-            WHERE run_id = (SELECT max(run_id) FROM raw.ingest_run WHERE status <> 'running')
+            WHERE run_id IN (SELECT DISTINCT sf.run_id
+                             FROM core.lease l
+                             JOIN raw.source_file sf ON sf.file_id = l.file_id
+                             WHERE l.snapshot_id = %s)
             GROUP BY 1,2 ORDER BY 1,2
-        """)
+        """, (snapshot_id,))
 
         trend = _rows(cur, """
             SELECT property_code::text AS property_code, prior_as_of::text AS prior_as_of,

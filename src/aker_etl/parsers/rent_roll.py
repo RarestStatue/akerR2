@@ -372,7 +372,11 @@ def _parse_summary_group(
     def count(v: object) -> int | None:
         try:
             return as_int(v)
-        except CoercionError:
+        except CoercionError as exc:
+            issues.append(
+                ParsedIssue(severity="warning", rule="summary_group_coercion", sheet_row=sheet_row,
+                            detail={"property_code": property_code, "error": str(exc)})
+            )
             return None
 
     return ParsedSummaryGroup(

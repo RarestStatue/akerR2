@@ -9,6 +9,7 @@ Skipped automatically when the database is unreachable, so the default
 
 from __future__ import annotations
 
+import psycopg
 import pytest
 
 from aker_etl.config import get_settings
@@ -308,3 +309,87 @@ def test_api_property_detail_does_not_404_on_zero_unit_books(settings, loaded):
     d = r.json()
     assert d["kpi"]["units"] == 0
     assert d["matrix"] == [] or all(not m["plottable"] for m in d["matrix"])
+
+
+def test_a_moveout_on_a_non_notice_row_does_not_abort_the_load(settings, loaded):
+    """BUG.md 1: the CHECK is an implication, not a biconditional.
+
+    A future-section row or a VACANT/MODEL/DOWN sentinel can legitimately print a
+    Move Out date. The old biconditional turned one such cell into a COPY failure
+    that rolled back the entire ingest run.
+    """
+    with connect(settings, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute("SELECT snapshot_id FROM core.snapshot LIMIT 1")
+        snap = cur.fetchone()[0]
+        # A unit with no future-section row already: core.lease has
+        # UNIQUE (snapshot_id, unit_id, section), and the first INSERT below is
+        # meant to succeed, so an unqualified LIMIT 1 could collide with one of
+        # the 93 existing future rows and fail for the wrong reason.
+        cur.execute(
+            """SELECT l.property_id, l.unit_id FROM core.lease l
+               WHERE l.snapshot_id = %s AND NOT EXISTS (
+                 SELECT 1 FROM core.lease f
+                 WHERE f.snapshot_id = l.snapshot_id AND f.unit_id = l.unit_id
+                   AND f.section = 'future')
+               LIMIT 1""",
+            (snap,),
+        )
+        pid, uid = cur.fetchone()
+        cur.execute("SELECT file_id FROM raw.source_file LIMIT 1")
+        fid = cur.fetchone()[0]
+        cur.execute("SELECT resident_id FROM core.resident LIMIT 1")
+        rid = cur.fetchone()[0]
+
+        # accepted: future row that carries a move-out date
+        cur.execute(
+            """INSERT INTO core.lease (snapshot_id, property_id, unit_id, resident_id,
+                 section, occupancy_status, move_in, move_out, file_id, sheet_row)
+               VALUES (%s,%s,%s,%s,'future','future','2026-01-01','2026-06-01',%s,999999)""",
+            (snap, pid, uid, rid, fid),
+        )
+        # still rejected: a notice row with no move-out date
+        with pytest.raises(psycopg.errors.CheckViolation):
+            cur.execute(
+                """INSERT INTO core.lease (snapshot_id, property_id, unit_id, resident_id,
+                     section, occupancy_status, file_id, sheet_row)
+                   VALUES (%s,%s,%s,%s,'current','notice',%s,999998)""",
+                (snap, pid, uid, rid, fid),
+            )
+
+    with connect(settings, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute("DELETE FROM core.lease WHERE sheet_row IN (999999, 999998)")
+
+
+def test_availability_check_groups_by_snapshot(settings, loaded):
+    """BUG.md 2: two snapshots reporting the same unit count must not collapse.
+
+    Exercises the grouping shape against a synthetic two-snapshot fixture, so it
+    does not need a second month's files to be loaded.
+    """
+    assert _scalar(settings, """
+        WITH ua(snapshot_id, property_id, units) AS (VALUES (1,1,10),(2,1,10)),
+             l(snapshot_id, property_id, section) AS (
+               SELECT s, 1, 'current' FROM generate_series(1,2) s, generate_series(1,10))
+        SELECT count(*) FROM (
+          SELECT ua.snapshot_id, ua.units,
+                 count(*) FILTER (WHERE l.section = 'current') AS detail_units
+          FROM ua
+          LEFT JOIN l ON l.snapshot_id = ua.snapshot_id
+                     AND l.property_id = ua.property_id
+          GROUP BY ua.snapshot_id, ua.property_id, ua.units
+          HAVING ua.units <> count(*) FILTER (WHERE l.section = 'current')
+        ) x""") == 0
+
+
+def test_occupancy_numerator_and_denominator_cover_the_same_rows(settings, loaded):
+    """BUG.md 7.5: occupied_units is not section-filtered; pct_occupied's denominator is.
+
+    Safe only while derive_status() gives every future-section row the 'future'
+    status. This asserts that invariant directly, so a change to derive_status
+    cannot silently push pct_occupied above 100%.
+    """
+    assert _scalar(settings, """
+        SELECT count(*) FROM core.lease
+        WHERE section <> 'current' AND occupancy_status IN ('occupied','notice')""") == 0
+    assert _scalar(settings,
+                   "SELECT count(*) FROM mart.property_snapshot_kpi WHERE pct_occupied > 100") == 0
