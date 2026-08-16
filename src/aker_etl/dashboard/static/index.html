@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aker Rent Roll</title>
+<style>
+  :root {
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#14181f; --muted:#5c6674; --line:#e2e6ec;
+    --accent:#2f6f4f; --accent-soft:#e6f0ea; --warn:#b4690e; --bad:#a4292f; --good:#2f6f4f;
+    --shadow:0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#0f1216; --panel:#161b22; --ink:#e6e9ee; --muted:#94a0b0; --line:#252c36;
+      --accent:#5fbb8a; --accent-soft:#16241c; --warn:#e0a33a; --bad:#e06b6b; --good:#5fbb8a;
+      --shadow:none;
+    }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  header { position:sticky; top:0; z-index:20; background:var(--panel);
+           border-bottom:1px solid var(--line); padding:14px 22px;
+           display:flex; align-items:baseline; gap:18px; flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0; letter-spacing:-.01em; }
+  header .as-of { color:var(--muted); font-size:13px; }
+  nav { margin-left:auto; display:flex; gap:4px; }
+  nav button { background:none; border:1px solid transparent; color:var(--muted);
+               padding:6px 12px; border-radius:7px; cursor:pointer; font-size:13px; }
+  nav button:hover { color:var(--ink); }
+  nav button.on { background:var(--accent-soft); color:var(--accent); border-color:var(--line); font-weight:600; }
+  main { padding:22px; max-width:1500px; margin:0 auto; }
+  section { display:none; }
+  section.on { display:block; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:12px; margin-bottom:20px; }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+          padding:14px 16px; box-shadow:var(--shadow); }
+  .tile .label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+  .tile .value { font-size:24px; font-weight:650; margin-top:4px; letter-spacing:-.02em; }
+  .tile .sub { color:var(--muted); font-size:12px; margin-top:2px; }
+  .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+          padding:16px 18px; box-shadow:var(--shadow); margin-bottom:16px; }
+  .card h2 { font-size:13px; margin:0 0 4px; text-transform:uppercase;
+             letter-spacing:.06em; color:var(--muted); font-weight:650; }
+  .card .hint { color:var(--muted); font-size:12px; margin:0 0 14px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase;
+       letter-spacing:.05em; cursor:pointer; user-select:none; position:sticky; top:0;
+       background:var(--panel); }
+  th.num, td.num { text-align:right; font-variant-numeric:tabular-nums; font-family:var(--mono); }
+  tbody tr:hover { background:var(--accent-soft); }
+  tbody tr.clickable { cursor:pointer; }
+  .scroll { overflow:auto; max-height:560px; border-radius:8px; }
+  .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:11px;
+          border:1px solid var(--line); color:var(--muted); }
+  .pill.occupied { color:var(--good); border-color:var(--good); }
+  .pill.notice { color:var(--warn); border-color:var(--warn); }
+  .pill.vacant { color:var(--bad); border-color:var(--bad); }
+  .pill.future, .pill.model, .pill.down { color:var(--muted); }
+  .neg { color:var(--bad); }
+  .bar-row { display:grid; grid-template-columns:92px 1fr 78px; gap:10px; align-items:center;
+             margin-bottom:5px; font-size:12px; }
+  .bar { background:var(--line); border-radius:4px; height:16px; overflow:hidden; }
+  .bar > div { background:var(--accent); height:100%; }
+  .bar.warn > div { background:var(--warn); }
+  input, select { background:var(--panel); color:var(--ink); border:1px solid var(--line);
+                  border-radius:7px; padding:6px 10px; font-size:13px; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; align-items:center; }
+  .muted { color:var(--muted); }
+  .insight { border-left:3px solid var(--line); padding:2px 0 2px 14px; margin-bottom:18px; }
+  .insight.high { border-color:var(--bad); }
+  .insight.medium { border-color:var(--warn); }
+  .insight.low { border-color:var(--accent); }
+  .insight h3 { font-size:14px; margin:0 0 4px; }
+  .insight .meta { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+  .insight .ev { font-family:var(--mono); font-size:12px; color:var(--muted); margin-top:6px; }
+  .empty { color:var(--muted); padding:22px; text-align:center; border:1px dashed var(--line);
+           border-radius:8px; }
+  dialog { border:1px solid var(--line); border-radius:12px; background:var(--panel);
+           color:var(--ink); max-width:900px; width:92vw; padding:0; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+  dialog::backdrop { background:rgba(6,10,16,.55); }
+  .dlg-head { display:flex; align-items:baseline; gap:12px; padding:16px 20px;
+              border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--panel); }
+  .dlg-head h2 { margin:0; font-size:16px; text-transform:none; letter-spacing:normal; color:var(--ink); }
+  .dlg-body { padding:18px 20px; max-height:72vh; overflow:auto; }
+  .close { margin-left:auto; background:none; border:1px solid var(--line); border-radius:7px;
+           color:var(--muted); cursor:pointer; padding:4px 10px; }
+  svg text { fill:var(--muted); font-size:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Aker Rent Roll</h1>
+  <span class="as-of" id="asof">loading…</span>
+  <nav>
+    <button data-tab="portfolio" class="on">Portfolio</button>
+    <button data-tab="properties">Properties</button>
+    <button data-tab="units">Units</button>
+    <button data-tab="insights">Insights</button>
+    <button data-tab="quality">Data quality</button>
+  </nav>
+</header>
+
+<main>
+  <section id="portfolio" class="on">
+    <div class="tiles" id="tiles"></div>
+    <div class="grid">
+      <div class="card">
+        <h2>Occupancy by property</h2>
+        <p class="hint">Occupied + notice, over current-section units. Amber marks below 90%.</p>
+        <div id="occ-bars"></div>
+      </div>
+      <div class="card">
+        <h2>Lease expiration ladder</h2>
+        <p class="hint">Occupied and notice leases by expiry month. Months before the as-of date are month-to-month holdovers.</p>
+        <div id="exp-chart"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h2>Charge mix</h2>
+        <p class="hint">Monthly billed amount by category, across every current lease.</p>
+        <div id="mix-bars"></div>
+      </div>
+      <div class="card">
+        <h2>Unit status</h2>
+        <p class="hint">Every lease block in the rent roll, by derived status.</p>
+        <div id="status-bars"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Assets</h2>
+      <p class="hint">Books of one physical asset rolled up - 134c, 134land and 134r are one property.</p>
+      <div class="scroll"><table id="asset-table"></table></div>
+    </div>
+  </section>
+
+  <section id="properties">
+    <div class="card">
+      <h2>Properties</h2>
+      <p class="hint">Click a row for unit types, charge mix, expirations and the report's own rollups.</p>
+      <div class="scroll"><table id="prop-table"></table></div>
+    </div>
+  </section>
+
+  <section id="units">
+    <div class="card">
+      <h2>Unit explorer</h2>
+      <div class="controls">
+        <select id="f-prop"><option value="">All properties</option></select>
+        <select id="f-status">
+          <option value="">All statuses</option>
+          <option>occupied</option><option>notice</option><option>vacant</option>
+          <option>future</option><option>model</option><option>down</option>
+        </select>
+        <input id="f-q" placeholder="unit or resident…" size="18">
+        <span class="muted" id="unit-count"></span>
+      </div>
+      <div class="scroll"><table id="unit-table"></table></div>
+    </div>
+  </section>
+
+  <section id="insights">
+    <div class="card">
+      <h2>Generated insights</h2>
+      <p class="hint" id="insight-meta"></p>
+      <div id="insight-list"></div>
+    </div>
+  </section>
+
+  <section id="quality">
+    <div class="card">
+      <h2>Detail vs report reconciliation</h2>
+      <p class="hint">Rent roll detail against the availability report and the rent roll's own summary block. Non-zero rows are real upstream disagreements, surfaced rather than hidden.</p>
+      <div class="scroll"><table id="recon-table"></table></div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h2>Load issues</h2>
+        <p class="hint">From the most recent completed ingest run.</p>
+        <table id="issue-table"></table>
+      </div>
+      <div class="card">
+        <h2>Ingest runs</h2>
+        <table id="run-table"></table>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Charge codes</h2>
+      <p class="hint">Codes marked <em>inferred</em> had their category guessed from the code string - worth a confirmation with the asset team.</p>
+      <div class="scroll"><table id="code-table"></table></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="dlg"><div class="dlg-head"><h2 id="dlg-title"></h2>
+  <button class="close" onclick="document.getElementById('dlg').close()">Close</button></div>
+  <div class="dlg-body" id="dlg-body"></div></dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = p => fetch(p).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e)));
+const money = v => v == null ? "-" : "$" + Math.round(v).toLocaleString();
+const money2 = v => v == null ? "-" : "$" + Number(v).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+const num = v => v == null ? "-" : Number(v).toLocaleString();
+const pct = v => v == null ? "-" : Number(v).toFixed(1) + "%";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll("main section").forEach(s => s.classList.toggle("on", s.id === b.dataset.tab));
+});
+
+function table(el, cols, rows, opts = {}) {
+  const head = "<thead><tr>" + cols.map((c,i) =>
+    `<th class="${c.num?"num":""}" data-i="${i}">${esc(c.label)}</th>`).join("") + "</tr></thead>";
+  const body = "<tbody>" + rows.map((r,ri) =>
+    `<tr class="${opts.onRow?"clickable":""}" data-ri="${ri}">` +
+    cols.map(c => `<td class="${c.num?"num":""}">${c.render ? c.render(r) : esc(r[c.key])}</td>`).join("") +
+    "</tr>").join("") + "</tbody>";
+  el.innerHTML = head + body;
+  let dir = {};
+  el.querySelectorAll("th").forEach(th => th.onclick = () => {
+    const c = cols[+th.dataset.i];
+    dir[c.key] = !dir[c.key];
+    const s = [...rows].sort((a,b) => {
+      const av = a[c.key], bv = b[c.key];
+      if (av == null) return 1; if (bv == null) return -1;
+      const r = (c.num ? av - bv : String(av).localeCompare(String(bv)));
+      return dir[c.key] ? r : -r;
+    });
+    table(el, cols, s, opts);
+  });
+  if (opts.onRow) el.querySelectorAll("tbody tr").forEach(tr =>
+    tr.onclick = () => opts.onRow(rows[+tr.dataset.ri]));
+}
+
+function bars(el, items, {fmt = num, warnAt = null} = {}) {
+  const max = Math.max(...items.map(i => Math.abs(i.value)), 1);
+  el.innerHTML = items.map(i => `
+    <div class="bar-row">
+      <span title="${esc(i.title || i.label)}">${esc(i.label)}</span>
+      <div class="bar ${warnAt != null && i.value < warnAt ? "warn" : ""}">
+        <div style="width:${Math.abs(i.value)/max*100}%"></div></div>
+      <span class="num" style="text-align:right;font-family:var(--mono)">${fmt(i.value)}</span>
+    </div>`).join("");
+}
+
+function expChart(el, rows, asOf) {
+  if (!rows.length) { el.innerHTML = '<p class="empty">No dated expirations.</p>'; return; }
+  const W = 640, H = 190, pad = {l:34, r:8, t:8, b:30};
+  const max = Math.max(...rows.map(r => +r.expiring_leases));
+  const bw = (W - pad.l - pad.r) / rows.length;
+  const bars = rows.map((r,i) => {
+    const h = (H - pad.t - pad.b) * (+r.expiring_leases / max);
+    const x = pad.l + i*bw, y = H - pad.b - h;
+    const past = r.expiry_month < asOf;
+    return `<rect x="${x+1}" y="${y}" width="${Math.max(bw-2,1)}" height="${h}"
+      fill="${past ? "var(--warn)" : "var(--accent)"}" rx="2">
+      <title>${r.expiry_month}: ${r.expiring_leases} leases, ${money(r.charges_at_risk)}/mo${past?" (holdover)":""}</title></rect>`;
+  }).join("");
+  const ticks = rows.map((r,i) => (i % Math.ceil(rows.length/8) === 0)
+    ? `<text x="${pad.l+i*bw+bw/2}" y="${H-10}" text-anchor="middle">${r.expiry_month.slice(0,7)}</text>` : "").join("");
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img">
+    <line x1="${pad.l}" y1="${H-pad.b}" x2="${W-pad.r}" y2="${H-pad.b}" stroke="var(--line)"/>
+    <text x="4" y="${pad.t+9}">${max}</text><text x="4" y="${H-pad.b}">0</text>
+    ${bars}${ticks}</svg>
+    <p class="hint" style="margin:6px 0 0">Amber = expired before the as-of date (month-to-month holdover).</p>`;
+}
+
+let SUMMARY = null;
+
+async function loadSummary() {
+  const d = await api("/api/summary");
+  SUMMARY = d;
+  const p = d.portfolio;
+  $("#asof").textContent = `as of ${d.as_of} · ${p.properties} property books · ${num(p.units)} units`;
+  $("#tiles").innerHTML = [
+    ["Units", num(p.units), `${num(p.properties)} books`],
+    ["Occupancy", pct(p.pct_occupied), `${num(p.occupied_units)} occupied + notice`],
+    ["Market rent", money(p.market_rent), "monthly, current section"],
+    ["Lease charges", money(p.lease_charges), "monthly billed"],
+    ["Notice", num(p.notice_units), "units on notice"],
+    ["Vacant", num(p.vacant_units), `${num(p.non_revenue_units)} non-revenue`],
+    ["Future leases", num(p.future_leases), "applicants assigned"],
+    ["Resident balance", money(p.balance), p.balance < 0 ? "credit overall" : "owed overall"],
+  ].map(([l,v,s]) => `<div class="tile"><div class="label">${l}</div>
+      <div class="value ${String(v).startsWith("$-")?"neg":""}">${v}</div>
+      <div class="sub">${s}</div></div>`).join("");
+
+  bars($("#occ-bars"), d.properties.filter(x => x.units > 0)
+        .sort((a,b) => a.pct_occupied - b.pct_occupied)
+        .map(x => ({label:x.property_code, title:x.property_name, value:+x.pct_occupied})),
+       {fmt:pct, warnAt:90});
+  expChart($("#exp-chart"), d.expirations, d.as_of);
+  bars($("#mix-bars"), d.charge_mix.map(c => ({label:c.category, value:+c.amount})), {fmt:money});
+  bars($("#status-bars"), d.status_mix.map(s => ({label:s.status, value:+s.n})));
+
+  table($("#asset-table"), [
+    {key:"asset_key", label:"Asset"},
+    {key:"asset_label", label:"Name"},
+    {key:"property_codes", label:"Books", render:r => esc((r.property_codes||[]).join(", "))},
+    {key:"units", label:"Units", num:true, render:r => num(r.units)},
+    {key:"occupied_units", label:"Occupied", num:true, render:r => num(r.occupied_units)},
+    {key:"pct_occupied", label:"Occ %", num:true, render:r => pct(r.pct_occupied)},
+    {key:"market_rent", label:"Market rent", num:true, render:r => money(r.market_rent)},
+    {key:"lease_charges", label:"Charges", num:true, render:r => money(r.lease_charges)},
+    {key:"balance", label:"Balance", num:true,
+     render:r => `<span class="${r.balance<0?"neg":""}">${money(r.balance)}</span>`},
+  ], d.assets);
+
+  table($("#prop-table"), [
+    {key:"property_code", label:"Code"},
+    {key:"property_name", label:"Name"},
+    {key:"book_type", label:"Book"},
+    {key:"units", label:"Units", num:true, render:r => num(r.units)},
+    {key:"occupied_units", label:"Occ", num:true, render:r => num(r.occupied_units)},
+    {key:"notice_units", label:"Notice", num:true, render:r => num(r.notice_units)},
+    {key:"vacant_units", label:"Vacant", num:true, render:r => num(r.vacant_units)},
+    {key:"future_leases", label:"Future", num:true, render:r => num(r.future_leases)},
+    {key:"pct_occupied", label:"Occ %", num:true, render:r => pct(r.pct_occupied)},
+    {key:"market_rent", label:"Market rent", num:true, render:r => money(r.market_rent)},
+    {key:"lease_charges", label:"Charges", num:true, render:r => money(r.lease_charges)},
+    {key:"square_feet", label:"Sq ft", num:true, render:r => num(r.square_feet)},
+    {key:"balance", label:"Balance", num:true,
+     render:r => `<span class="${r.balance<0?"neg":""}">${money(r.balance)}</span>`},
+  ], d.properties, {onRow: r => openProperty(r.property_code)});
+
+  const sel = $("#f-prop");
+  d.properties.forEach(p => sel.insertAdjacentHTML("beforeend",
+    `<option value="${esc(p.property_code)}">${esc(p.property_code)} - ${esc(p.property_name)}</option>`));
+}
+
+async function openProperty(code) {
+  const d = await api(`/api/property/${encodeURIComponent(code)}`);
+  const k = d.kpi, ltl = d.loss_to_lease[0] || {};
+  $("#dlg-title").textContent = `${k.property_code} - ${k.property_name}`;
+  $("#dlg-body").innerHTML = `
+    <div class="tiles">
+      ${[["Units",num(k.units)],["Occupancy",pct(k.pct_occupied)],["Market rent",money(k.market_rent)],
+         ["Charges",money(k.lease_charges)],["Loss to lease",money(ltl.loss_to_lease)],
+         ["Concessions",money(ltl.concessions)],["Balance",money(k.balance)],
+         ["Available (avail. report)",num(k.available)]]
+        .map(([l,v]) => `<div class="tile"><div class="label">${l}</div><div class="value">${v}</div></div>`).join("")}
+    </div>
+    <div class="card"><h2>Unit types</h2><table id="d-types"></table></div>
+    <div class="card"><h2>Charge mix</h2><table id="d-mix"></table></div>
+    <div class="card"><h2>Expirations</h2><table id="d-exp"></table></div>
+    <div class="card"><h2>Report summary groups (as printed)</h2><table id="d-sg"></table></div>`;
+  table($("#d-types"), [
+    {key:"unit_type_code", label:"Type"},
+    {key:"units", label:"Units", num:true, render:r=>num(r.units)},
+    {key:"occupied", label:"Occupied", num:true, render:r=>num(r.occupied)},
+    {key:"avg_sqft", label:"Avg sq ft", num:true, render:r=>num(r.avg_sqft)},
+    {key:"avg_market_rent", label:"Avg market rent", num:true, render:r=>money(r.avg_market_rent)},
+  ], d.unit_types);
+  table($("#d-mix"), [
+    {key:"charge_code", label:"Code"}, {key:"category", label:"Category"},
+    {key:"line_count", label:"Lines", num:true, render:r=>num(r.line_count)},
+    {key:"amount", label:"Amount", num:true,
+     render:r=>`<span class="${r.amount<0?"neg":""}">${money2(r.amount)}</span>`},
+  ], d.charge_mix);
+  table($("#d-exp"), [
+    {key:"expiry_month", label:"Month"},
+    {key:"expiring_leases", label:"Leases", num:true, render:r=>num(r.expiring_leases)},
+    {key:"charges_at_risk", label:"Charges at risk", num:true, render:r=>money(r.charges_at_risk)},
+    {key:"holdover_mtm", label:"Holdover", num:true, render:r=>num(r.holdover_mtm)},
+  ], d.expirations);
+  table($("#d-sg"), [
+    {key:"group_label", label:"Group"},
+    {key:"unit_count", label:"Units", num:true, render:r=>num(r.unit_count)},
+    {key:"square_footage", label:"Sq ft", num:true, render:r=>num(r.square_footage)},
+    {key:"market_rent", label:"Market rent", num:true, render:r=>money2(r.market_rent)},
+    {key:"lease_charges", label:"Charges", num:true, render:r=>money2(r.lease_charges)},
+    {key:"balance", label:"Balance", num:true, render:r=>money2(r.balance)},
+  ], d.summary_groups);
+  $("#dlg").showModal();
+}
+
+async function loadUnits() {
+  const p = new URLSearchParams();
+  if ($("#f-prop").value) p.set("property_code", $("#f-prop").value);
+  if ($("#f-status").value) p.set("status", $("#f-status").value);
+  if ($("#f-q").value.trim()) p.set("q", $("#f-q").value.trim());
+  const d = await api("/api/units?" + p);
+  $("#unit-count").textContent = `${num(d.total)} matching lease blocks${d.total > d.rows.length ? ` (showing ${d.rows.length})` : ""}`;
+  table($("#unit-table"), [
+    {key:"property_code", label:"Property"},
+    {key:"unit_code", label:"Unit"},
+    {key:"unit_type_code", label:"Type"},
+    {key:"unit_sqft", label:"Sq ft", num:true, render:r=>num(r.unit_sqft)},
+    {key:"occupancy_status", label:"Status",
+     render:r=>`<span class="pill ${r.occupancy_status}">${r.occupancy_status}</span>`},
+    {key:"display_name", label:"Resident", render:r=>esc(r.display_name || "-")},
+    {key:"market_rent", label:"Market rent", num:true, render:r=>money2(r.market_rent)},
+    {key:"charges_total", label:"Charges", num:true, render:r=>money2(r.charges_total)},
+    {key:"balance", label:"Balance", num:true,
+     render:r=>`<span class="${r.balance<0?"neg":""}">${money2(r.balance)}</span>`},
+    {key:"move_in", label:"Move in", render:r=>esc(r.move_in||"-")},
+    {key:"lease_expiration", label:"Expires", render:r=>esc(r.lease_expiration||"-")},
+    {key:"move_out", label:"Move out", render:r=>esc(r.move_out||"-")},
+  ], d.rows, {onRow: r => openLease(r)});
+}
+
+async function openLease(r) {
+  const charges = await api(`/api/lease/${r.lease_id}/charges`);
+  $("#dlg-title").textContent = `${r.property_code} · unit ${r.unit_code} · ${r.occupancy_status}`;
+  const sum = charges.reduce((a,c) => a + Number(c.amount), 0);
+  $("#dlg-body").innerHTML = `
+    <p class="muted">${esc(r.display_name || "no resident")} ${r.resident_id ? "· " + esc(r.resident_id) : ""}
+       · market rent ${money2(r.market_rent)} · balance ${money2(r.balance)}</p>
+    <table id="d-charges"></table>
+    <p class="muted" style="margin-top:10px">Charge lines sum to ${money2(sum)};
+       the report's printed Total for this block is ${money2(r.charges_total)}.
+       The loader reconciles the two on every load.</p>`;
+  table($("#d-charges"), [
+    {key:"line_no", label:"#", num:true},
+    {key:"charge_code", label:"Code"},
+    {key:"category", label:"Category"},
+    {key:"description", label:"Description", render:c=>esc(c.description || "-")},
+    {key:"amount", label:"Amount", num:true,
+     render:c=>`<span class="${c.amount<0?"neg":""}">${money2(c.amount)}</span>`},
+  ], charges);
+  $("#dlg").showModal();
+}
+
+async function loadInsights() {
+  const d = await api("/api/insights");
+  const lr = d.last_run;
+  $("#insight-meta").innerHTML = d.insights.length
+    ? `Generated once per snapshot by a local model (${esc(d.insights[0].model)}) and stored - every cited figure is checked against the source payload before it is saved.`
+    : "";
+  if (!d.insights.length) {
+    $("#insight-list").innerHTML = `<div class="empty">No insights generated for this snapshot.
+      ${lr ? `Last run: <strong>${esc(lr.status)}</strong>${lr.error ? " - " + esc(lr.error) : ""}.` : ""}
+      <br>Run <code>aker-etl insights generate</code> with Ollama available.</div>`;
+    return;
+  }
+  $("#insight-list").innerHTML = d.insights.map(i => `
+    <div class="insight ${i.priority}">
+      <div class="meta">${esc(i.priority)} · ${esc(i.category)} · ${esc(i.scope)}${
+        i.property_code ? " " + esc(i.property_code) : i.asset_key ? " " + esc(i.asset_key) : ""}</div>
+      <h3>${esc(i.headline)}</h3>
+      <div>${esc(i.detail)}</div>
+      <div class="ev">${(i.evidence||[]).map(e =>
+        `${esc(e.metric)} = ${esc(e.value)}${e.comparison ? " (" + esc(e.comparison) + ")" : ""}`).join(" · ")}</div>
+    </div>`).join("");
+}
+
+async function loadQuality() {
+  const d = await api("/api/quality");
+  table($("#recon-table"), [
+    {key:"property_code", label:"Property"},
+    {key:"detail_units", label:"Detail units", num:true, render:r=>num(r.detail_units)},
+    {key:"availability_units", label:"Avail units", num:true, render:r=>num(r.availability_units)},
+    {key:"unit_delta", label:"Δ units", num:true,
+     render:r=>`<span class="${r.unit_delta?"neg":""}">${num(r.unit_delta)}</span>`},
+    {key:"detail_occupied", label:"Detail occ", num:true, render:r=>num(r.detail_occupied)},
+    {key:"availability_occupied", label:"Avail occ", num:true, render:r=>num(r.availability_occupied)},
+    {key:"charge_delta", label:"Δ charges", num:true,
+     render:r=>`<span class="${r.charge_delta?"neg":""}">${money2(r.charge_delta)}</span>`},
+  ], d.reconciliation);
+  table($("#issue-table"), [
+    {key:"severity", label:"Severity",
+     render:r=>`<span class="pill ${r.severity==="error"?"vacant":r.severity==="warning"?"notice":""}">${esc(r.severity)}</span>`},
+    {key:"rule", label:"Rule"},
+    {key:"n", label:"Count", num:true, render:r=>num(r.n)},
+  ], d.issues);
+  table($("#run-table"), [
+    {key:"run_id", label:"Run", num:true},
+    {key:"status", label:"Status"},
+    {key:"started_at", label:"Started", render:r=>esc(String(r.started_at).replace("T"," ").slice(0,19))},
+    {key:"files_loaded", label:"Loaded", num:true},
+    {key:"files_skipped", label:"Skipped", num:true},
+    {key:"rows_loaded", label:"Rows", num:true, render:r=>num(r.rows_loaded)},
+  ], d.runs);
+  table($("#code-table"), [
+    {key:"charge_code", label:"Code"}, {key:"category", label:"Category"},
+    {key:"description", label:"Description", render:r=>esc(r.description||"-")},
+    {key:"label_verified", label:"Label",
+     render:r=>r.label_verified ? '<span class="pill">verified</span>' : '<span class="pill notice">inferred</span>'},
+  ], d.charge_codes);
+}
+
+["f-prop","f-status"].forEach(id => $("#"+id).onchange = loadUnits);
+let t; $("#f-q").oninput = () => { clearTimeout(t); t = setTimeout(loadUnits, 250); };
+
+(async () => {
+  try {
+    await loadSummary();
+    await Promise.all([loadUnits(), loadInsights(), loadQuality()]);
+  } catch (e) {
+    document.querySelector("main").innerHTML =
+      `<div class="empty">${esc(e.detail || e.message || "Failed to load. Is the database up and loaded?")}</div>`;
+  }
+})();
+</script>
+</body>
+</html>

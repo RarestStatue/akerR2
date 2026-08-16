@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:17
+    container_name: aker_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aker}
+      POSTGRES_USER: ${POSTGRES_USER:-aker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      # 5434 on the host: 5432 is the conventional local PG and 5433 is already
+      # taken on this machine by an unrelated container.
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # ,Z relabels for SELinux (Fedora/RHEL hosts); harmless elsewhere.
+      - ./initdb:/docker-entrypoint-initdb.d:ro,Z
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - work_mem=32MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - effective_cache_size=1536MB
+      - -c
+      - synchronous_commit=off        # safe here: source of truth is the xlsx files, reloadable
+      - -c
+      - track_io_timing=on
+      - -c
+      - log_min_duration_statement=500
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aker} -d ${POSTGRES_DB:-aker}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # Optional. `docker compose --profile insights up -d` to start it.
+  # Omit the profile and the ETL + dashboard run untouched.
+  # On a machine with a GPU, prefer a host-installed Ollama: this container is
+  # CPU-only unless GPU passthrough is configured.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aker_ollama
+    profiles: ["insights"]
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  pgdata:
+  ollama_models:

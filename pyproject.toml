@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aker-etl"
+version = "1.0.0"
+description = "Rent roll + unit availability ETL and dashboard for the Aker case study"
+requires-python = ">=3.12"
+dependencies = [
+  "openpyxl>=3.1.5",
+  "psycopg[binary,pool]>=3.2",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.5",
+  "typer>=0.12",
+  "rich>=13.9",
+  "fastapi>=0.115",       # presentation layer
+  "uvicorn>=0.32",
+  "ollama>=0.4.7",        # AI insight layer only; ETL runs without it reachable
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "pytest-cov", "ruff", "mypy"]
+
+[project.scripts]
+aker-etl = "aker_etl.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+markers = ["integration: requires a running Postgres container"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+# Pinned explicitly so CI does not start failing when ruff widens its default
+# rule set between releases. E4/E7/E9/F is ruff's stable default; I and W are
+# the two additions this codebase was written against.
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "W"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
