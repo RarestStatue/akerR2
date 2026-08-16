@@ -17,11 +17,31 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
 from ..config import get_settings
+from ..insights.fallback import positioning_fallback
 
 STATIC = Path(__file__).parent / "static"
 
 app = FastAPI(title="Aker Rent Roll", docs_url="/api/docs", redoc_url=None)
 _settings = get_settings()
+
+# Single source of truth for quadrant labels/hints and exclusion-reason text,
+# shared by /api/matrix and the property dialog so the UI never hard-codes them.
+QUADRANTS = {
+    "performing": {"label": "Performing",
+                   "hint": "Full and capturing rent. Protect the position."},
+    "leaking":    {"label": "Leaking",
+                   "hint": "Full, but revenue is lost to pricing, concessions or collections."},
+    "vacancy_led": {"label": "Vacancy-led",
+                    "hint": "Pricing and billing are sound; the loss is empty units."},
+    "distressed": {"label": "Distressed",
+                   "hint": "Empty and underpriced at the same time."},
+}
+
+EXCLUSION_REASONS = {
+    "no_units":       "No units in this book",
+    "no_market_rent": "Source prints no market rent (commercial book)",
+    "no_charge_data": "Rent roll contains no lease-charge lines",
+}
 
 
 def _conn() -> psycopg.Connection:
@@ -142,23 +162,97 @@ def summary(as_of: str | None = None) -> dict:
     }
 
 
+@app.get("/api/matrix")
+def matrix(as_of: str | None = None) -> dict:
+    snap, as_of_date = _snapshot_id(as_of)
+    rows = _q(
+        """SELECT property_code::text AS property_code, property_name,
+                  book_type::text AS book_type, asset_key, units, occupied_units,
+                  notice_units, vacant_units, pct_occupied, market_rent,
+                  lease_charges, revenue_capture_pct, quadrant, plottable,
+                  exclusion_reason, charge_coverage, charges_to_threshold,
+                  units_to_threshold, loss_to_lease, concessions,
+                  ancillary_charges, units_owing, balance_owed,
+                  capture_threshold, occupancy_threshold
+           FROM mart.property_profitability
+           WHERE snapshot_id = %s
+           ORDER BY revenue_capture_pct NULLS LAST, property_code""",
+        (snap,),
+    )
+    return {
+        "as_of": as_of_date,
+        # Echoed from the view's own constants (PLAN2 2.1): the thresholds are
+        # declared once, in SQL. Empty when the snapshot has no rows at all, in
+        # which case the plot renders its "no plottable properties" state and
+        # never reads them.
+        "thresholds": ({"revenue_capture": rows[0]["capture_threshold"],
+                        "occupancy": rows[0]["occupancy_threshold"]} if rows else {}),
+        "quadrants": QUADRANTS,
+        "exclusion_reasons": EXCLUSION_REASONS,
+        "points":   [r for r in rows if r["plottable"]],
+        "excluded": [r for r in rows if not r["plottable"]],
+    }
+
+
 @app.get("/api/property/{code}")
 def property_detail(code: str, as_of: str | None = None) -> dict:
     snap, _ = _snapshot_id(as_of)
+    # Driven from core.property, LEFT JOIN the KPI view -- not FROM it. 134land,
+    # 183c and altapm have zero units and so no KPI row; the Matrix tab's "Not
+    # plotted" table makes them clickable, so this must 404 only on an unknown
+    # property *code*, not an absent KPI row. Same pattern as summary() at
+    # app.py:89-110.
     kpi = _q(
-        """SELECT k.*, ua.units AS availability_units, ua.available, ua.pct_leased,
+        """SELECT p.property_id, p.property_code::text AS property_code, p.property_name,
+                  p.book_type::text AS book_type, p.asset_key,
+                  COALESCE(k.units, 0) AS units,
+                  COALESCE(k.occupied_units, 0) AS occupied_units,
+                  COALESCE(k.notice_units, 0) AS notice_units,
+                  COALESCE(k.vacant_units, 0) AS vacant_units,
+                  COALESCE(k.non_revenue_units, 0) AS non_revenue_units,
+                  COALESCE(k.future_leases, 0) AS future_leases,
+                  k.pct_occupied, COALESCE(k.market_rent, 0) AS market_rent,
+                  COALESCE(k.lease_charges, 0) AS lease_charges,
+                  COALESCE(k.square_feet, 0) AS square_feet,
+                  COALESCE(k.balance, 0) AS balance,
+                  ua.units AS availability_units, ua.available, ua.pct_leased,
                   ua.avg_rent, ua.avg_sqft
-           FROM mart.property_snapshot_kpi k
+           FROM core.property p
+           LEFT JOIN mart.property_snapshot_kpi k
+             ON k.property_id = p.property_id AND k.snapshot_id = %s
            LEFT JOIN core.unit_availability ua
-             ON ua.snapshot_id = k.snapshot_id AND ua.property_id = k.property_id
-           WHERE k.snapshot_id = %s AND k.property_code = %s""",
-        (snap, code),
+             ON ua.snapshot_id = %s AND ua.property_id = p.property_id
+           WHERE p.property_code = %s""",
+        (snap, snap, code),
     )
     if not kpi:
         raise HTTPException(404, f"unknown property {code!r}")
     pid = kpi[0]["property_id"]
+    matrix_rows = _q(
+        """SELECT quadrant, revenue_capture_pct, pct_occupied, units, occupied_units,
+                  vacant_units, notice_units, market_rent, lease_charges,
+                  charges_to_threshold, units_to_threshold, loss_to_lease,
+                  concessions, ancillary_charges, units_owing, balance_owed,
+                  plottable, exclusion_reason, charge_coverage,
+                  capture_threshold, occupancy_threshold
+           FROM mart.property_profitability
+           WHERE snapshot_id = %s AND property_id = %s""",
+        (snap, pid),
+    )
     return {
         "kpi": kpi[0],
+        "matrix": matrix_rows,
+        "positioning_fallback": positioning_fallback(matrix_rows[0] if matrix_rows else None),
+        "insights": _q(
+            """SELECT category::text AS category, priority::text AS priority,
+                      headline, detail, evidence, model, generated_at
+               FROM core.insight
+               WHERE snapshot_id = %s AND property_id = %s
+               ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+                        CASE category WHEN 'positioning' THEN 0 ELSE 1 END,
+                        insight_id""",
+            (snap, pid),
+        ),
         "charge_mix": _q(
             """SELECT category::text AS category, charge_code, line_count, amount
                FROM mart.charge_mix WHERE snapshot_id = %s AND property_id = %s

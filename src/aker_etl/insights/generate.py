@@ -17,6 +17,7 @@ import datetime as dt
 import logging
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -29,6 +30,7 @@ from .context import (
     estimate_tokens,
     latest_snapshot,
     map_chunks,
+    positioning_chunks,
     reduce_chunk,
 )
 from .schema import Insight, InsightBatch, normalise_target, scope_target_ok, target_is_known
@@ -74,6 +76,59 @@ no explanation before or after. It must match this schema exactly:
 Set `property_code` only when scope is "property" and `asset_key` only when scope
 is "asset"; otherwise use null. If nothing is worth reporting, reply {"insights": []}."""
 
+POSITIONING_PROMPT = """You are an asset-management analyst reading one property's position on a
+profitability matrix.
+
+The X axis is revenue capture: billed lease charges as a share of gross potential
+rent. The Y axis is physical occupancy. The two thresholds split the portfolio
+into four quadrants:
+
+  performing  - capture and occupancy both at or above threshold
+  leaking     - occupancy at threshold, capture below it: the property is full but
+                revenue is lost to pricing, concessions or collections
+  vacancy_led - capture at threshold, occupancy below it: pricing and billing are
+                sound, the loss is empty units
+  distressed  - both below threshold
+
+The JSON you are given contains FINISHED figures for exactly one property. Never
+calculate, re-derive, sum, rank or estimate anything. Every number you mention
+must be copied verbatim from the JSON.
+
+`charges_to_threshold` is the additional monthly billed revenue that would move
+this property across the capture line. `units_to_threshold` is the number of
+additional leased units that would move it across the occupancy line. A zero
+means that line is already crossed.
+
+Write ONE insight naming the concrete lever that would move this property to a
+better quadrant, or - if it is already `performing` - the lever that would defend
+its position. Be specific: name whether the gap is concessions, loss to lease,
+uncollected balances, ancillary revenue, or vacant and notice units, and say so
+using the figures supplied. Do not recommend anything the data does not support,
+and never mention operating expenses, NOI, cap rate or valuation - the source
+data contains none of them.
+
+Return at most one insight. Reply with a single JSON object and nothing else --
+no prose, no markdown fence, no explanation before or after. It must match this
+schema exactly:
+
+{"insights": [{"scope": "property", "property_code": string, "asset_key": null,
+               "category": "positioning", "priority": "low" | "medium" | "high",
+               "headline": string (8-120 chars), "detail": string (10-600 chars),
+               "evidence": [{"metric": string, "value": string,
+                             "comparison": string or null}]}]}
+
+Set "scope" to "property" and "property_code" to the code in the input. If
+nothing is worth reporting, reply {"insights": []}."""
+
+# Priority is derived from the quadrant, in code -- never asked of the model.
+# Consistent with the rule that ranking is an ORDER BY, not a judgment call.
+QUADRANT_PRIORITY = {
+    "distressed": "high",
+    "leaking": "medium",
+    "vacancy_led": "medium",
+    "performing": "low",
+}
+
 
 @dataclass
 class GenerateOutcome:
@@ -82,6 +137,9 @@ class GenerateOutcome:
     prompt_sha256: str = ""
     chunks: int = 0
     calls: int = 0
+    map_calls: int = 0
+    positioning_calls: int = 0
+    reduce_calls: int = 0
     insights_kept: int = 0
     insights_dropped: int = 0
     skipped_reason: str | None = None
@@ -102,7 +160,8 @@ class GenerateOutcome:
             return "\n".join(lines)
         if self.status != "succeeded":
             return f"[red]insights {self.status}:[/] {self.error}"
-        return (f"[green]{self.insights_kept} insight(s) stored[/] from {self.calls} call(s) "
+        return (f"[green]{self.insights_kept} insight(s) stored[/] from {self.map_calls} map + "
+                f"{self.positioning_calls} positioning + {self.reduce_calls} reduce call(s) "
                 f"with {self.model} ({self.insights_dropped} dropped by the evidence check) "
                 f"in {self.elapsed_s:.1f}s")
 
@@ -240,6 +299,13 @@ def generate(
                     (f"map:{chunk['asset']['asset_key']}", estimate_tokens(text),
                      settings.aker_insight_num_ctx_map)
                 )
+            if settings.aker_insight_positioning:
+                for chunk in positioning_chunks(payload):
+                    out.dry_run_report.append(
+                        (f"positioning:{chunk['property']['property_code']}",
+                         estimate_tokens(canonical_json(chunk)),
+                         settings.aker_insight_num_ctx_map)
+                    )
             red = reduce_chunk(payload, [{"asset_key": c["asset"]["asset_key"],
                                           "headline": "<map pass output>"} for c in chunks])
             out.dry_run_report.append(
@@ -309,6 +375,7 @@ def generate(
                 property_codes=property_codes, asset_keys=asset_keys,
             )
             out.calls += 1
+            out.map_calls += 1
             dropped += n_dropped
             if err:
                 log.warning("%s: %s", name, err)
@@ -322,6 +389,15 @@ def generate(
                     "category": insight.category,
                 })
 
+        if settings.aker_insight_positioning:
+            pos_kept, pos_calls, pos_dropped = _positioning_pass(
+                client, settings, payload, sha, property_codes, asset_keys
+            )
+            kept.extend(pos_kept)
+            out.calls += pos_calls
+            out.positioning_calls += pos_calls
+            dropped += pos_dropped
+
         red = reduce_chunk(payload, headlines)
         # think=False here too. With thinking on, qwen3.5:4b spends the entire
         # generation budget reasoning and returns an empty `content` -- measured
@@ -334,6 +410,7 @@ def generate(
             property_codes=property_codes, asset_keys=asset_keys,
         )
         out.calls += 1
+        out.reduce_calls += 1
         dropped += n_dropped
         if err:
             log.warning("reduce: %s", err)
@@ -365,10 +442,73 @@ def _known_targets(conn) -> tuple[frozenset[str], frozenset[str]]:
     return frozenset(c for c, _ in rows), frozenset(a for _, a in rows)
 
 
+def _positioning_pass(
+    client, settings: Settings, payload: dict, sha: str,
+    property_codes: frozenset[str], asset_keys: frozenset[str],
+) -> tuple[list[tuple[Insight, str]], int, int]:
+    """One model call per plottable property: quadrant-movement advice.
+
+    Reuses `_call()`, the same evidence gate as the map/reduce passes. The
+    fields scope/property_code/asset_key/category/priority are forced by a
+    `rewrite` hook run *before* the gate -- the chunk is one property, so
+    these are facts, not judgements, and forcing them afterwards would be too
+    late: check_evidence would already have dropped a mis-scoped reply before
+    the caller ever saw it.
+    Returns (kept insights with their payload hash, calls made, dropped count).
+    """
+    kept: list[tuple[Insight, str]] = []
+    calls = 0
+    dropped = 0
+    for chunk in positioning_chunks(payload):
+        code = chunk["property"]["property_code"]
+        quadrant = chunk["property"].get("quadrant")
+        name = f"positioning:{code}"
+
+        def force(insight: Insight, code: str = code, quadrant: str | None = quadrant) -> Insight:
+            # The chunk is exactly one property, so scope, target and category are
+            # facts about the input, not judgements the model gets to make.
+            # Priority follows the quadrant, in code -- ranking is never the
+            # model's job here, same rule as the ORDER BY in the mart views.
+            return insight.model_copy(update={
+                "scope": "property", "property_code": code, "asset_key": None,
+                "category": "positioning",
+                "priority": (QUADRANT_PRIORITY.get(quadrant, insight.priority)
+                             if quadrant is not None else insight.priority),
+            })
+
+        batch, n_dropped, err = _call(
+            client, settings, chunk, name,
+            num_ctx=settings.aker_insight_num_ctx_map, think=False,
+            property_codes=property_codes, asset_keys=asset_keys,
+            system=POSITIONING_PROMPT, rewrite=force,
+        )
+        calls += 1
+        dropped += n_dropped
+        if err:
+            log.warning("%s: %s", name, err)
+            continue
+        # Keep at most one insight per property: the first that survived the
+        # gate; extras are dropped and counted, not silently discarded.
+        if len(batch) > 1:
+            dropped += len(batch) - 1
+            batch = batch[:1]
+        for insight in batch:
+            kept.append((insight, sha))
+    return kept, calls, dropped
+
+
 def _call(client, settings: Settings, chunk: dict, name: str, *, num_ctx: int, think: bool,
           property_codes: frozenset[str] = frozenset(),
-          asset_keys: frozenset[str] = frozenset()):
-    """One model call. Returns (kept insights, dropped count, error)."""
+          asset_keys: frozenset[str] = frozenset(),
+          system: str = SYSTEM_PROMPT,
+          rewrite: Callable[[Insight], Insight] | None = None):
+    """One model call. Returns (kept insights, dropped count, error).
+
+    `rewrite` runs on every parsed insight before the evidence gate. The
+    positioning pass uses it to force the fields the chunk already determines --
+    forcing them afterwards would be too late, because check_evidence drops a
+    mis-scoped reply before the caller ever sees it.
+    """
     text = canonical_json(chunk)
     tokens = estimate_tokens(text)
     # Refuse rather than truncate. Ollama silently drops overflow, and a model
@@ -383,7 +523,7 @@ def _call(client, settings: Settings, chunk: dict, name: str, *, num_ctx: int, t
         try:
             resp = client.chat(
                 model=settings.aker_insight_model,
-                messages=[{"role": "system", "content": SYSTEM_PROMPT},
+                messages=[{"role": "system", "content": system},
                           {"role": "user", "content": text}],
                 format=InsightBatch.model_json_schema(),
                 think=think,
@@ -414,8 +554,9 @@ def _call(client, settings: Settings, chunk: dict, name: str, *, num_ctx: int, t
 
         kept, dropped = [], 0
         for raw_insight in batch.insights:
+            insight = rewrite(raw_insight) if rewrite else raw_insight
             insight = normalise_target(
-                raw_insight, property_codes=property_codes, asset_keys=asset_keys
+                insight, property_codes=property_codes, asset_keys=asset_keys
             )
             ok, why = check_evidence(
                 insight, allowed, property_codes=property_codes, asset_keys=asset_keys

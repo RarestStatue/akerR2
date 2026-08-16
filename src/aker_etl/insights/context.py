@@ -154,6 +154,18 @@ def build_payload(
             FROM mart.property_trend WHERE current_as_of = %s ORDER BY property_code
         """, (as_of_date,))
 
+        matrix = _rows(cur, """
+            SELECT property_code::text AS property_code, property_name,
+                   book_type::text AS book_type, quadrant, revenue_capture_pct,
+                   pct_occupied, units, occupied_units, vacant_units, notice_units,
+                   market_rent, lease_charges, charges_to_threshold, units_to_threshold,
+                   loss_to_lease, concessions, ancillary_charges, units_owing,
+                   balance_owed, capture_threshold, occupancy_threshold
+            FROM mart.property_profitability
+            WHERE snapshot_id = %s AND plottable
+            ORDER BY revenue_capture_pct
+        """, (snapshot_id,))
+
     # Rankings are computed here, in code, from the SQL results -- never left to
     # the model. It writes about an already-ordered list.
     def rank(key: str, *, reverse: bool, limit: int = 5) -> list[dict]:
@@ -171,6 +183,7 @@ def build_payload(
         "charge_mix": charge_mix,
         "expirations": expirations,
         "loss_to_lease": loss_to_lease,
+        "matrix": matrix,
         "reconciliation": reconciliation,
         "data_quality": data_quality,
         "trend": trend,
@@ -219,6 +232,22 @@ def map_chunks(payload: dict) -> list[dict]:
             if chunk:
                 chunk[key].append(row)
     return [by_asset[k] for k in sorted(by_asset)]
+
+
+def positioning_chunks(payload: dict) -> list[dict]:
+    """One chunk per plottable property: its own matrix row plus portfolio
+    reference points. Small and self-contained, the regime a 4B model is
+    reliable in - same reasoning as map_chunks.
+    """
+    rows = payload.get("matrix", [])
+    portfolio = {
+        "pct_occupied": payload["portfolio"].get("pct_occupied"),
+        "property_count": len(rows),
+        "capture_threshold": rows[0]["capture_threshold"] if rows else None,
+        "occupancy_threshold": rows[0]["occupancy_threshold"] if rows else None,
+    }
+    return [{"as_of": payload["as_of"], "property": r,
+             "portfolio_context": portfolio} for r in rows]
 
 
 def reduce_chunk(payload: dict, map_headlines: list[dict]) -> dict:

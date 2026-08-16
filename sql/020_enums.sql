@@ -54,3 +54,10 @@ DO $$
 BEGIN
   CREATE TYPE core.insight_priority AS ENUM ('low','medium','high');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Quadrant-movement advice for the profitability matrix (PLAN2 section 2.7).
+-- ADD VALUE IF NOT EXISTS is idempotent, and on PostgreSQL 12+ it is legal
+-- inside the implicit transaction that init_db runs each file in, provided the
+-- new value is not *used* in the same transaction. It is not: only the Python
+-- insert path uses it, in a later transaction.
+ALTER TYPE core.insight_category ADD VALUE IF NOT EXISTS 'positioning';

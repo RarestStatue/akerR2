@@ -136,3 +136,175 @@ def test_asset_rollup_groups_the_books_of_one_property(settings, loaded):
         cur.execute("SELECT property_codes FROM mart.asset_snapshot_kpi WHERE asset_key = '134'")
         codes = cur.fetchone()[0]
     assert sorted(codes) == ["134c", "134r"]  # 134land has no leases, so no KPI row
+
+
+# --------------------------------------------------------------------------- #
+# Profitability matrix -- PLAN2 section 5.2
+# --------------------------------------------------------------------------- #
+
+_PLOTTABLE_FIGURES = {
+    # code: (units, occupied, pct_occupied, market_rent, lease_charges, capture_pct, quadrant)
+    "138a": (63, 63, "100.00", "86114.00", "94756.90", "110.04", "performing"),
+    "126a": (19, 18, "94.74", "32936.00", "35387.00", "107.44", "vacancy_led"),
+    "115r": (300, 288, "96.00", "763814.00", "791650.93", "103.64", "performing"),
+    "462a": (266, 253, "95.11", "417895.50", "415606.08", "99.45", "performing"),
+    "143a": (312, 298, "95.51", "572421.00", "568612.77", "99.33", "performing"),
+    "134r": (348, 333, "95.69", "1212256.00", "1180076.57", "97.35", "performing"),
+    "144r": (775, 759, "97.94", "1722576.00", "1636735.63", "95.02", "performing"),
+    "126r": (284, 274, "96.48", "1108579.00", "1034844.53", "93.35", "leaking"),
+    "138r": (235, 221, "94.04", "739550.00", "675043.47", "91.28", "distressed"),
+    "139r": (71, 65, "91.55", "537740.00", "421627.77", "78.41", "distressed"),
+    "153r": (211, 196, "92.89", "684747.00", "515321.39", "75.26", "distressed"),
+    "153a": (23, 19, "82.61", "63954.00", "29587.00", "46.26", "distressed"),
+}
+
+_MOVEMENT_DELTAS = {
+    "153a": ("31169.30", 3),
+    "153r": ("135188.26", 5),
+    "139r": ("89225.23", 3),
+    "138r": ("27529.03", 3),
+    "126r": ("18305.52", 0),
+    "144r": ("0", 0), "134r": ("0", 0), "143a": ("0", 0),
+    "462a": ("0", 0), "115r": ("0", 0), "138a": ("0", 0),
+    "126a": ("0", 1),
+}
+
+
+def test_matrix_has_exactly_the_twelve_plottable_books(settings, loaded):
+    with connect(settings, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT property_code::text FROM mart.property_profitability WHERE plottable ORDER BY 1"
+        )
+        codes = [r[0] for r in cur.fetchall()]
+    assert codes == sorted(_PLOTTABLE_FIGURES)
+
+
+def test_matrix_exclusion_reason_counts(settings, loaded):
+    with connect(settings, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute(
+            """SELECT exclusion_reason, count(*) FROM mart.property_profitability
+               WHERE NOT plottable GROUP BY 1"""
+        )
+        counts = dict(cur.fetchall())
+    assert counts == {"no_units": 3, "no_market_rent": 4, "no_charge_data": 6}
+
+
+def test_matrix_figures_match_the_verified_table(settings, loaded):
+    with connect(settings, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute(
+            """SELECT property_code::text, units, occupied_units, pct_occupied, market_rent,
+                      lease_charges, revenue_capture_pct, quadrant
+               FROM mart.property_profitability WHERE plottable"""
+        )
+        rows = {r[0]: r[1:] for r in cur.fetchall()}
+    for code, expected in _PLOTTABLE_FIGURES.items():
+        units, occupied, pct_occupied, market_rent, lease_charges, capture_pct, quadrant = expected
+        got = rows[code]
+        assert got[0] == units
+        assert got[1] == occupied
+        assert str(got[2]) == pct_occupied
+        assert str(got[3]) == market_rent
+        assert str(got[4]) == lease_charges
+        assert str(got[5]) == capture_pct
+        assert got[6] == quadrant
+
+
+def test_matrix_quadrant_counts(settings, loaded):
+    with connect(settings, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute(
+            """SELECT quadrant, count(*) FROM mart.property_profitability
+               WHERE plottable GROUP BY 1"""
+        )
+        counts = dict(cur.fetchall())
+    assert counts == {"performing": 6, "leaking": 1, "vacancy_led": 1, "distressed": 4}
+
+
+def test_matrix_movement_deltas(settings, loaded):
+    with connect(settings, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute(
+            """SELECT property_code::text, charges_to_threshold, units_to_threshold
+               FROM mart.property_profitability WHERE plottable"""
+        )
+        rows = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
+    for code, (charges, units) in _MOVEMENT_DELTAS.items():
+        assert str(rows[code][0]) == charges
+        assert rows[code][1] == units
+
+
+def test_matrix_has_no_third_state(settings, loaded):
+    assert _scalar(settings, """
+        SELECT count(*) FROM mart.property_profitability
+        WHERE plottable AND (revenue_capture_pct IS NULL OR quadrant IS NULL)""") == 0
+    assert _scalar(settings, """
+        SELECT count(*) FROM mart.property_profitability
+        WHERE NOT plottable AND (quadrant IS NOT NULL OR exclusion_reason IS NULL)""") == 0
+
+
+def test_quadrant_rule_puts_the_boundary_on_the_high_side(settings, loaded):
+    """PLAN2 2.2: a value EQUAL to a threshold counts as the high side.
+
+    Calls mart.quadrant() -- the same function the view calls -- so the rule is
+    tested rather than restated.
+    """
+    cases = [
+        ((95.00, 95.00), "performing"),
+        ((95.00, 94.99), "vacancy_led"),
+        ((94.99, 95.00), "leaking"),
+        ((94.99, 94.99), "distressed"),
+        ((None, 95.00), None),
+        ((95.00, None), None),
+    ]
+    with connect(settings, autocommit=True) as conn, conn.cursor() as cur:
+        for (capture, occ), expected in cases:
+            cur.execute(
+                "SELECT mart.quadrant(%s::numeric, %s::numeric, 95.0, 95.0)",
+                (capture, occ),
+            )
+            assert cur.fetchone()[0] == expected, (capture, occ)
+
+
+def test_view_quadrant_agrees_with_the_function(settings, loaded):
+    """The view must not carry a second copy of the rule."""
+    assert _scalar(settings, """
+        SELECT count(*) FROM mart.property_profitability
+        WHERE plottable
+          AND quadrant IS DISTINCT FROM
+              mart.quadrant(revenue_capture_pct, pct_occupied,
+                            capture_threshold, occupancy_threshold)""") == 0
+
+
+def test_matrix_view_survives_refresh_marts(settings, loaded):
+    """Plain view, so refresh_marts() (which refreshes matviews only) leaves it alone."""
+    from aker_etl.db import refresh_marts
+
+    with connect(settings, autocommit=True) as conn:
+        refresh_marts(conn)
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM mart.property_profitability")
+            assert cur.fetchone()[0] == 25
+
+
+def test_api_matrix_covers_every_property(settings, loaded):
+    from fastapi.testclient import TestClient
+
+    from aker_etl.dashboard.app import app
+
+    with TestClient(app) as client:
+        r = client.get("/api/matrix")
+    assert r.status_code == 200
+    d = r.json()
+    assert len(d["points"]) + len(d["excluded"]) == 25
+
+
+def test_api_property_detail_does_not_404_on_zero_unit_books(settings, loaded):
+    """Regression test for the section 3.2 fix."""
+    from fastapi.testclient import TestClient
+
+    from aker_etl.dashboard.app import app
+
+    with TestClient(app) as client:
+        r = client.get("/api/property/134land")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["kpi"]["units"] == 0
+    assert d["matrix"] == [] or all(not m["plottable"] for m in d["matrix"])

@@ -94,10 +94,21 @@ aker-etl validate      # issue counts by rule and severity
 aker-etl serve                       # http://127.0.0.1:8000
 ```
 
-Five tabs: **Portfolio** (KPIs, occupancy, expiration ladder, charge mix),
-**Properties** (click any row for unit types, charge mix, expirations and the
-report's own rollups), **Units** (filter and search 4,106 lease blocks; click a
-row for its charge lines), **Insights**, **Data quality**.
+Six tabs: **Portfolio** (KPIs, occupancy, expiration ladder, profitability
+ranking), **Properties** (click any row for unit types, charge mix, expirations
+and the report's own rollups), **Matrix** (revenue capture vs. occupancy
+four-quadrant scatter; see below), **Units** (filter and search 4,106 lease
+blocks; click a row for its charge lines), **Insights**, **Data quality**.
+
+**The Matrix tab.** The source workbooks carry no expense data, so true
+profitability (NOI, cap rate) cannot be computed. `mart.property_profitability`
+uses **revenue capture** (billed charges ÷ gross potential rent) as a
+revenue-efficiency proxy instead, plotted against physical occupancy. Six books
+with no lease-charge lines at all (1,057 units) would show a false 0% and are
+excluded rather than plotted, along with three zero-unit books and four
+commercial books with no market rent - 13 of 25 in all, listed with their
+reason on the "Not plotted" table. The same view drives the Portfolio tab's
+profitability ranking and, per property, a quadrant-movement insight.
 
 ### Step 8 - optional: the insight panel
 
@@ -111,6 +122,12 @@ aker-etl insights show --scope portfolio
 Insights are generated once per snapshot and stored, so the dashboard never
 waits on inference. If Ollama is unreachable, `insights generate` exits 0 with a
 warning and the dashboard renders normally with an empty panel.
+
+A third pass (`AKER_INSIGHT_POSITIONING`, on by default) makes one call per
+plottable property naming the lever that would move it to a better matrix
+quadrant. Every property dialog shows this even without Ollama: when no stored
+`positioning` insight exists, the panel falls back to deterministic,
+SQL-templated guidance and is marked **computed** rather than with a model tag.
 
 ### Shutting down
 
@@ -151,8 +168,8 @@ is a convenience wrapper, not a build system; nothing depends on it.
 ## 4. Tests
 
 ```bash
-pytest -m "not integration"        # 61 tests, ~1.5s, no database needed
-pytest -m integration              # 9 tests, needs the container running
+pytest -m "not integration"        # 69 tests, ~1.5s, no database needed
+pytest -m integration              # 19 tests, needs the container running
 pytest                             # everything
 make check                         # ruff + mypy + unit tests
 ```
@@ -177,7 +194,7 @@ reload produces identical row counts.
 
 ```
 docker/            Compose file + initdb extensions
-sql/               Schema, in dependency order (005 … 080)
+sql/               Schema, in dependency order (005 … 090)
 src/aker_etl/
   parsers/         Two workbook grammars, no database dependency
   models.py        Row models + the shared Decimal/date coercers

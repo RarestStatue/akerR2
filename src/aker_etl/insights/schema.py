@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 Scope = Literal["portfolio", "asset", "property"]
 Category = Literal["occupancy", "revenue", "concession", "expiration", "delinquency",
-                   "unit_mix", "data_quality", "trend"]
+                   "unit_mix", "data_quality", "trend", "positioning"]
 Priority = Literal["low", "medium", "high"]
 
 

@@ -10,12 +10,20 @@
     --accent:#2f6f4f; --accent-soft:#e6f0ea; --warn:#b4690e; --bad:#a4292f; --good:#2f6f4f;
     --shadow:0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
     --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+    --q-performing:#2f6f4f; --q-performing-bg:#e8f2ec;
+    --q-leaking:#b4690e;    --q-leaking-bg:#f8f0e2;
+    --q-vacancy:#3a6ea5;    --q-vacancy-bg:#e7eef7;
+    --q-distressed:#a4292f; --q-distressed-bg:#f8e9ea;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg:#0f1216; --panel:#161b22; --ink:#e6e9ee; --muted:#94a0b0; --line:#252c36;
       --accent:#5fbb8a; --accent-soft:#16241c; --warn:#e0a33a; --bad:#e06b6b; --good:#5fbb8a;
       --shadow:none;
+      --q-performing:#5fbb8a; --q-performing-bg:#14241c;
+      --q-leaking:#e0a33a;    --q-leaking-bg:#2a2214;
+      --q-vacancy:#6fa8dc;    --q-vacancy-bg:#151f2b;
+      --q-distressed:#e06b6b; --q-distressed-bg:#2a1618;
     }
   }
   * { box-sizing:border-box; }
@@ -80,6 +88,27 @@
   .insight .ev { font-family:var(--mono); font-size:12px; color:var(--muted); margin-top:6px; }
   .empty { color:var(--muted); padding:22px; text-align:center; border:1px dashed var(--line);
            border-radius:8px; }
+  .q-chip { display:inline-block; padding:2px 10px; border-radius:999px; font-size:11px; font-weight:650; }
+  .q-chip.performing  { color:var(--q-performing);  background:var(--q-performing-bg); }
+  .q-chip.leaking     { color:var(--q-leaking);     background:var(--q-leaking-bg); }
+  .q-chip.vacancy_led { color:var(--q-vacancy);     background:var(--q-vacancy-bg); }
+  .q-chip.distressed  { color:var(--q-distressed);  background:var(--q-distressed-bg); }
+  .legend-row { display:flex; align-items:flex-start; gap:10px; padding:9px 0; border-bottom:1px solid var(--line); }
+  .legend-row:last-child { border-bottom:none; }
+  .legend-swatch { width:12px; height:12px; border-radius:3px; margin-top:4px; flex:none; }
+  .legend-count { color:var(--muted); font-family:var(--mono); font-size:12px; }
+  .legend-chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
+  .chip { display:inline-block; padding:1px 8px; border-radius:999px; border:1px solid var(--line);
+          font-size:11px; cursor:pointer; font-family:var(--mono); background:none; color:var(--ink); }
+  .chip:hover { background:var(--accent-soft); }
+  .badge { margin-left:auto; font-size:11px; color:var(--muted); text-transform:uppercase;
+           letter-spacing:.05em; border:1px solid var(--line); border-radius:999px; padding:2px 8px; }
+  .picker-row { display:flex; justify-content:space-between; gap:10px; padding:9px 4px;
+                border-bottom:1px solid var(--line); cursor:pointer; }
+  .picker-row:hover { background:var(--accent-soft); }
+  .picker-row:last-child { border-bottom:none; }
+  .back-btn { background:none; border:1px solid var(--line); border-radius:7px; color:var(--muted);
+              cursor:pointer; padding:4px 10px; margin-right:8px; font-size:12px; }
   dialog { border:1px solid var(--line); border-radius:12px; background:var(--panel);
            color:var(--ink); max-width:900px; width:92vw; padding:0; box-shadow:0 20px 60px rgba(0,0,0,.3); }
   dialog::backdrop { background:rgba(6,10,16,.55); }
@@ -99,6 +128,7 @@
   <nav>
     <button data-tab="portfolio" class="on">Portfolio</button>
     <button data-tab="properties">Properties</button>
+    <button data-tab="matrix">Matrix</button>
     <button data-tab="units">Units</button>
     <button data-tab="insights">Insights</button>
     <button data-tab="quality">Data quality</button>
@@ -122,9 +152,12 @@
     </div>
     <div class="grid">
       <div class="card">
-        <h2>Charge mix</h2>
-        <p class="hint">Monthly billed amount by category, across every current lease.</p>
-        <div id="mix-bars"></div>
+        <h2>Profitability ranking</h2>
+        <p class="hint">Revenue capture - billed charges as a share of gross potential
+          rent - lowest first. No expense data exists in the source, so this ranks
+          revenue efficiency, not NOI. Click a row to open the property.</p>
+        <div id="profit-rank"></div>
+        <p class="hint" id="profit-rank-note"></p>
       </div>
       <div class="card">
         <h2>Unit status</h2>
@@ -144,6 +177,29 @@
       <h2>Properties</h2>
       <p class="hint">Click a row for unit types, charge mix, expirations and the report's own rollups.</p>
       <div class="scroll"><table id="prop-table"></table></div>
+    </div>
+  </section>
+
+  <section id="matrix">
+    <div class="card">
+      <h2>Profitability matrix</h2>
+      <p class="hint">Revenue capture (billed charges as a share of gross potential
+        rent) against physical occupancy. The source workbooks contain no expense
+        data, so revenue capture is a revenue-efficiency proxy, not NOI. Dot size is
+        unit count. Revenue capture already embeds occupancy, so a property far to
+        the left of its occupancy level is losing money to pricing, concessions or
+        collections rather than to vacancy - that gap is the diagnostic. Click a dot
+        to open the property; where dots overlap you will be asked which one you
+        meant.</p>
+      <div id="matrix-plot"></div>
+      <div id="matrix-legend"></div>
+    </div>
+    <div class="card">
+      <h2>Not plotted</h2>
+      <p class="hint">Books that cannot be scored, and why. Click one to open it
+        anyway - the property view still works, with generic guidance in place of
+        matrix-specific advice.</p>
+      <div class="scroll"><table id="matrix-excluded"></table></div>
     </div>
   </section>
 
@@ -197,7 +253,7 @@
   </section>
 </main>
 
-<dialog id="dlg"><div class="dlg-head"><h2 id="dlg-title"></h2>
+<dialog id="dlg"><div class="dlg-head"><span id="dlg-back-slot"></span><h2 id="dlg-title"></h2>
   <button class="close" onclick="document.getElementById('dlg').close()">Close</button></div>
   <div class="dlg-body" id="dlg-body"></div></dialog>
 
@@ -239,15 +295,20 @@ function table(el, cols, rows, opts = {}) {
     tr.onclick = () => opts.onRow(rows[+tr.dataset.ri]));
 }
 
-function bars(el, items, {fmt = num, warnAt = null} = {}) {
+function bars(el, items, {fmt = num, warnAt = null, domain = null, colorFor = null, onItem = null} = {}) {
   const max = Math.max(...items.map(i => Math.abs(i.value)), 1);
-  el.innerHTML = items.map(i => `
-    <div class="bar-row">
+  const widthPct = domain
+    ? i => Math.max(0, Math.min(100, (i.value - domain[0]) / (domain[1] - domain[0]) * 100))
+    : i => Math.abs(i.value) / max * 100;
+  el.innerHTML = items.map((i,ii) => `
+    <div class="bar-row" data-ii="${ii}" style="${onItem ? "cursor:pointer" : ""}">
       <span title="${esc(i.title || i.label)}">${esc(i.label)}</span>
       <div class="bar ${warnAt != null && i.value < warnAt ? "warn" : ""}">
-        <div style="width:${Math.abs(i.value)/max*100}%"></div></div>
+        <div style="width:${widthPct(i)}%${colorFor ? `;background:${colorFor(i)}` : ""}"></div></div>
       <span class="num" style="text-align:right;font-family:var(--mono)">${fmt(i.value)}</span>
     </div>`).join("");
+  if (onItem) el.querySelectorAll(".bar-row").forEach(row =>
+    row.onclick = () => onItem(items[+row.dataset.ii]));
 }
 
 function expChart(el, rows, asOf) {
@@ -270,6 +331,216 @@ function expChart(el, rows, asOf) {
     <text x="4" y="${pad.t+9}">${max}</text><text x="4" y="${H-pad.b}">0</text>
     ${bars}${ticks}</svg>
     <p class="hint" style="margin:6px 0 0">Amber = expired before the as-of date (month-to-month holdover).</p>`;
+}
+
+const QUADRANT_COLOR = {
+  performing: "var(--q-performing)", leaking: "var(--q-leaking)",
+  vacancy_led: "var(--q-vacancy)", distressed: "var(--q-distressed)",
+};
+const QUADRANT_BG = {
+  performing: "var(--q-performing-bg)", leaking: "var(--q-leaking-bg)",
+  vacancy_led: "var(--q-vacancy-bg)", distressed: "var(--q-distressed-bg)",
+};
+
+let MATRIX = null;
+let POINTS = [];        // plotted dots in view-coordinates, for hit-testing
+let PICKER_STACK = null; // set while the property dialog was reached through the overlap picker
+
+function svgPoint(svg, ev) {
+  const pt = svg.createSVGPoint();
+  pt.x = ev.clientX; pt.y = ev.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+function matrixHitTest(x, y) {
+  const HIT_RADIUS = 14;
+  return POINTS
+    .map(p => ({p, d: Math.hypot(p.cx - x, p.cy - y)}))
+    .filter(h => h.d <= Math.max(h.p.r, HIT_RADIUS))
+    .sort((a, b) => a.d - b.d);
+}
+
+function matrixDotClick(hits) {
+  if (!hits.length) return;
+  if (hits.length === 1) return openProperty(hits[0].p.property_code);
+  openPointPicker(hits.map(h => h.p));
+}
+
+function matrixPlot(el, data) {
+  const W = 720, H = 460, pad = {l:56, r:16, t:16, b:44};
+  const pts = data.points, th = data.thresholds;
+  if (!pts.length) {
+    el.innerHTML = '<p class="empty">No plottable properties for this snapshot.</p>';
+    POINTS = [];
+    return;
+  }
+  const captures = pts.map(p => +p.revenue_capture_pct);
+  const occs = pts.map(p => +p.pct_occupied);
+  const maxUnits = Math.max(...pts.map(p => +p.units), 1);
+
+  const xDomain = [Math.min(40, Math.floor(Math.min(...captures)) - 5),
+                   Math.max(115, Math.ceil(Math.max(...captures)) + 5)];
+  const yDomain = [Math.min(80, Math.floor(Math.min(...occs)) - 2), 101];
+
+  const xw = W - pad.l - pad.r, yh = H - pad.t - pad.b;
+  const sx = v => pad.l + (v - xDomain[0]) / (xDomain[1] - xDomain[0]) * xw;
+  const sy = v => pad.t + yh - (v - yDomain[0]) / (yDomain[1] - yDomain[0]) * yh;
+  const xThresh = sx(th.revenue_capture), yThresh = sy(th.occupancy);
+
+  const quads = [
+    {key:"performing",  x1:xThresh,  y1:pad.t,   x2:pad.l+xw, y2:yThresh},
+    {key:"vacancy_led", x1:xThresh,  y1:yThresh, x2:pad.l+xw, y2:pad.t+yh},
+    {key:"distressed",  x1:pad.l,    y1:yThresh, x2:xThresh,  y2:pad.t+yh},
+    {key:"leaking",     x1:pad.l,    y1:pad.t,   x2:xThresh,  y2:yThresh},
+  ];
+  const quadRects = quads.map(q => `
+    <rect x="${Math.min(q.x1,q.x2)}" y="${Math.min(q.y1,q.y2)}"
+          width="${Math.abs(q.x2-q.x1)}" height="${Math.abs(q.y2-q.y1)}" fill="${QUADRANT_BG[q.key]}"/>
+    <text x="${Math.min(q.x1,q.x2)+6}" y="${Math.min(q.y1,q.y2)+13}"
+          fill="${QUADRANT_COLOR[q.key]}" font-weight="650">${esc(data.quadrants[q.key].label)}</text>`).join("");
+
+  POINTS = pts.map(p => ({...p, cx: sx(+p.revenue_capture_pct), cy: sy(+p.pct_occupied),
+                           r: 5 + 17 * Math.sqrt((+p.units) / maxUnits)}));
+
+  const dots = POINTS.map(p => `
+    <circle tabindex="0" data-code="${esc(p.property_code)}" data-cx="${p.cx}" data-cy="${p.cy}"
+      cx="${p.cx}" cy="${p.cy}" r="${p.r}" fill="${QUADRANT_COLOR[p.quadrant]}" fill-opacity="0.75"
+      stroke="var(--panel)" stroke-width="1.5">
+      <title>${esc(p.property_code)} - ${esc(p.property_name)} · capture ${pct(p.revenue_capture_pct)} · occupancy ${pct(p.pct_occupied)} · ${num(p.units)} units</title>
+    </circle>`).join("");
+
+  const xTicks = [], yTicks = [];
+  for (let i = 0; i <= 4; i++) {
+    const xv = xDomain[0] + (xDomain[1]-xDomain[0]) * i/4;
+    xTicks.push(`<text x="${sx(xv)}" y="${H-pad.b+16}" text-anchor="middle">${xv.toFixed(0)}</text>`);
+    const yv = yDomain[0] + (yDomain[1]-yDomain[0]) * i/4;
+    yTicks.push(`<text x="${pad.l-8}" y="${sy(yv)+3}" text-anchor="end">${yv.toFixed(0)}</text>`);
+  }
+
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" id="matrix-svg">
+    ${quadRects}
+    <line x1="${xThresh}" y1="${pad.t}" x2="${xThresh}" y2="${pad.t+yh}" stroke="var(--line)" stroke-dasharray="4 3"/>
+    <line x1="${pad.l}" y1="${yThresh}" x2="${pad.l+xw}" y2="${yThresh}" stroke="var(--line)" stroke-dasharray="4 3"/>
+    ${xTicks.join("")}${yTicks.join("")}
+    <text x="${pad.l+xw/2}" y="${H-6}" text-anchor="middle">Revenue capture %</text>
+    <text x="14" y="${pad.t+yh/2}" text-anchor="middle" transform="rotate(-90 14 ${pad.t+yh/2})">Occupancy %</text>
+    ${dots}
+  </svg>`;
+
+  const svg = $("#matrix-svg");
+  svg.addEventListener("click", ev => {
+    const pt = svgPoint(svg, ev);
+    matrixDotClick(matrixHitTest(pt.x, pt.y));
+  });
+  svg.querySelectorAll("circle").forEach(c => c.addEventListener("keydown", ev => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    ev.preventDefault();
+    matrixDotClick(matrixHitTest(+c.dataset.cx, +c.dataset.cy));
+  }));
+}
+
+function renderMatrixLegend(el, data) {
+  const counts = {};
+  data.points.forEach(p => counts[p.quadrant] = (counts[p.quadrant]||0) + 1);
+  el.innerHTML = Object.entries(data.quadrants).map(([key,q]) => {
+    const codes = data.points.filter(p => p.quadrant === key).map(p => p.property_code);
+    return `<div class="legend-row">
+      <span class="legend-swatch" style="background:${QUADRANT_COLOR[key]}"></span>
+      <div style="flex:1">
+        <div><strong>${esc(q.label)}</strong> <span class="legend-count">${counts[key]||0}</span></div>
+        <div class="hint" style="margin:2px 0 0">${esc(q.hint)}</div>
+        <div class="legend-chips">${codes.map(c => `<button class="chip" data-code="${esc(c)}">${esc(c)}</button>`).join("")}</div>
+      </div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".chip").forEach(b => b.onclick = () => openProperty(b.dataset.code));
+}
+
+function buildNotRankedNote(excluded, reasons) {
+  if (!excluded.length) return "";
+  const counts = {};
+  excluded.forEach(r => counts[r.exclusion_reason] = (counts[r.exclusion_reason]||0) + 1);
+  const phrase = {
+    no_charge_data: n => `${n} have no lease-charge lines`,
+    no_market_rent: n => `${n} ${n===1?"is a commercial book":"are commercial books"} with no market rent`,
+    no_units: n => `${n} have no units`,
+  };
+  const parts = Object.entries(counts).sort((a,b) => b[1]-a[1])
+    .map(([reason,n]) => (phrase[reason] || (n2 => `${n2} ${esc(reasons[reason]||reason)}`))(n));
+  return `${excluded.length} books are not ranked: ${parts.join(", ")}. See the Matrix tab.`;
+}
+
+async function loadMatrix() {
+  const d = await api("/api/matrix");
+  MATRIX = d;
+  matrixPlot($("#matrix-plot"), d);
+  renderMatrixLegend($("#matrix-legend"), d);
+  table($("#matrix-excluded"), [
+    {key:"property_code", label:"Code"},
+    {key:"property_name", label:"Name"},
+    {key:"book_type", label:"Book"},
+    {key:"units", label:"Units", num:true, render:r=>num(r.units)},
+    {key:"pct_occupied", label:"Occ %", num:true, render:r=>pct(r.pct_occupied)},
+    {key:"exclusion_reason", label:"Reason", render:r=>esc(d.exclusion_reasons[r.exclusion_reason] || r.exclusion_reason)},
+    {key:"charge_coverage", label:"Charge coverage", num:true,
+     render:r=>r.charge_coverage==null?"-":pct(r.charge_coverage*100)},
+  ], d.excluded, {onRow: r => openProperty(r.property_code)});
+
+  const items = d.points.map(p => ({label:p.property_code, title:p.property_name,
+    value:+p.revenue_capture_pct, property_code:p.property_code, quadrant:p.quadrant}));
+  bars($("#profit-rank"), items, {
+    fmt: pct, domain: [0, Math.max(110, ...items.map(i => i.value), 0)],
+    colorFor: i => QUADRANT_COLOR[i.quadrant], onItem: i => openProperty(i.property_code),
+  });
+  $("#profit-rank-note").textContent = buildNotRankedNote(d.excluded, d.exclusion_reasons);
+}
+
+function openPointPicker(points) {
+  PICKER_STACK = points;
+  $("#dlg-back-slot").innerHTML = "";
+  $("#dlg-title").textContent = `${points.length} propert${points.length===1?"y":"ies"} at this point`;
+  $("#dlg-body").innerHTML = `<div id="picker-list"></div>`;
+  $("#picker-list").innerHTML = points.map(p => `
+    <div class="picker-row" data-code="${esc(p.property_code)}">
+      <span><strong>${esc(p.property_code)}</strong> ${esc(p.property_name)}
+        <span class="q-chip ${esc(p.quadrant)}">${esc(MATRIX.quadrants[p.quadrant].label)}</span></span>
+      <span class="muted">${num(p.units)} units · capture ${pct(p.revenue_capture_pct)} · occ ${pct(p.pct_occupied)}</span>
+    </div>`).join("");
+  $("#picker-list").querySelectorAll(".picker-row").forEach(row =>
+    row.onclick = () => openProperty(row.dataset.code, {fromPicker: true}));
+  if (!$("#dlg").open) $("#dlg").showModal();
+}
+
+function insightPanel(insights, matrixRow, fallback) {
+  const positioningInsight = insights.find(i => i.category === "positioning");
+  const chip = matrixRow && matrixRow.plottable
+    ? `<span class="q-chip ${esc(matrixRow.quadrant)}">${esc((MATRIX && MATRIX.quadrants[matrixRow.quadrant].label) || matrixRow.quadrant)}</span>
+       <span class="muted" style="margin-left:8px">capture ${pct(matrixRow.revenue_capture_pct)} · occupancy ${pct(matrixRow.pct_occupied)}</span>`
+    : "";
+  const renderOne = (i, computed = false) => `
+    <div class="insight ${esc(i.priority || "low")}">
+      <div class="meta">${esc(i.priority||"")}${i.category?" · "+esc(i.category):""}${i.scope&&i.scope!=="property"?" · "+esc(i.scope):""}${computed?" · computed":""}</div>
+      <h3>${esc(i.headline)}</h3>
+      <div>${esc(i.detail)}</div>
+      <div class="ev">${(i.evidence||[]).map(e =>
+        `${esc(e.metric)} = ${esc(e.value)}${e.comparison ? " (" + esc(e.comparison) + ")" : ""}`).join(" · ")}</div>
+    </div>`;
+  let body = insights.map(i => renderOne(i)).join("");
+  if (!positioningInsight) {
+    body += renderOne({priority:"low", category:"positioning", headline:fallback.headline,
+                        detail:fallback.detail, evidence:fallback.evidence}, true);
+  }
+  const hint = insights.length ? "" :
+    `<p class="hint">Run <code>aker-etl insights generate</code> with Ollama available for model-written analysis.</p>`;
+  const modelTag = (insights.find(i => i.model) || {}).model;
+  const badge = modelTag ? esc(modelTag) : "computed";
+  return `<div class="card">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+      <h2 style="margin:0">Insights</h2><span class="badge">${badge}</span>
+    </div>
+    <div style="margin-bottom:10px">${chip}</div>
+    ${body}${hint}
+  </div>`;
 }
 
 let SUMMARY = null;
@@ -297,7 +568,6 @@ async function loadSummary() {
         .map(x => ({label:x.property_code, title:x.property_name, value:+x.pct_occupied})),
        {fmt:pct, warnAt:90});
   expChart($("#exp-chart"), d.expirations, d.as_of);
-  bars($("#mix-bars"), d.charge_mix.map(c => ({label:c.category, value:+c.amount})), {fmt:money});
   bars($("#status-bars"), d.status_mix.map(s => ({label:s.status, value:+s.n})));
 
   table($("#asset-table"), [
@@ -335,9 +605,14 @@ async function loadSummary() {
     `<option value="${esc(p.property_code)}">${esc(p.property_code)} - ${esc(p.property_name)}</option>`));
 }
 
-async function openProperty(code) {
+async function openProperty(code, opts = {}) {
+  if (!opts.fromPicker) PICKER_STACK = null;
   const d = await api(`/api/property/${encodeURIComponent(code)}`);
   const k = d.kpi, ltl = d.loss_to_lease[0] || {};
+  const matrixRow = (d.matrix && d.matrix.length) ? d.matrix[0] : null;
+  $("#dlg-back-slot").innerHTML = PICKER_STACK
+    ? `<button class="back-btn" id="dlg-back">Back to list</button>` : "";
+  if (PICKER_STACK) $("#dlg-back").onclick = () => openPointPicker(PICKER_STACK);
   $("#dlg-title").textContent = `${k.property_code} - ${k.property_name}`;
   $("#dlg-body").innerHTML = `
     <div class="tiles">
@@ -347,6 +622,7 @@ async function openProperty(code) {
          ["Available (avail. report)",num(k.available)]]
         .map(([l,v]) => `<div class="tile"><div class="label">${l}</div><div class="value">${v}</div></div>`).join("")}
     </div>
+    ${insightPanel(d.insights || [], matrixRow, d.positioning_fallback)}
     <div class="card"><h2>Unit types</h2><table id="d-types"></table></div>
     <div class="card"><h2>Charge mix</h2><table id="d-mix"></table></div>
     <div class="card"><h2>Expirations</h2><table id="d-exp"></table></div>
@@ -378,7 +654,7 @@ async function openProperty(code) {
     {key:"lease_charges", label:"Charges", num:true, render:r=>money2(r.lease_charges)},
     {key:"balance", label:"Balance", num:true, render:r=>money2(r.balance)},
   ], d.summary_groups);
-  $("#dlg").showModal();
+  if (!$("#dlg").open) $("#dlg").showModal();
 }
 
 async function loadUnits() {
@@ -492,7 +768,7 @@ let t; $("#f-q").oninput = () => { clearTimeout(t); t = setTimeout(loadUnits, 25
 (async () => {
   try {
     await loadSummary();
-    await Promise.all([loadUnits(), loadInsights(), loadQuality()]);
+    await Promise.all([loadMatrix(), loadUnits(), loadInsights(), loadQuality()]);
   } catch (e) {
     document.querySelector("main").innerHTML =
       `<div class="empty">${esc(e.detail || e.message || "Failed to load. Is the database up and loaded?")}</div>`;

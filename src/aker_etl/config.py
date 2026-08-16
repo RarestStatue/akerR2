@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     aker_insight_num_ctx_reduce: int = 8192
     aker_insight_jobs: int = 1
     aker_insight_enabled: bool = True
+    aker_insight_positioning: bool = True   # third pass: quadrant-movement advice
 
     @field_validator("aker_insight_model")
     @classmethod
