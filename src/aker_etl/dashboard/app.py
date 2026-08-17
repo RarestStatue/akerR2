@@ -345,6 +345,56 @@ def lease_charges(lease_id: int) -> list[dict]:
     )
 
 
+@app.get("/api/leases/expiring")
+def leases_expiring(month: str, as_of: str | None = None) -> dict:
+    """Every lease behind one bar of the expiration ladder.
+
+    The WHERE clause is a deliberate copy of mart.expiration_schedule's own
+    predicate (sql/070_views_mart.sql) -- including the fact that it does *not*
+    filter on section -- so `total` here always equals the `expiring_leases` the
+    chart drew for that month, *for a refreshed snapshot*: mart.expiration_schedule
+    is a materialized view, so a load that skips the refresh can leave it stale
+    against core.lease even with identical predicates. tests/test_dashboard_expiring.py
+    asserts the equality for every month, which is what catches the two drifting apart.
+
+    No LIMIT: the tallest bar in the current corpus is 516 leases, and a bar the
+    user just clicked is exactly the set they asked to see. Truncating it would
+    contradict the count printed on the bar's own tooltip.
+    """
+    # Validated before the snapshot lookup so a malformed month is a 400 whatever
+    # state the database is in, rather than a 500 out of psycopg's date parser.
+    try:
+        first = dt.date.fromisoformat(month)
+    except ValueError:
+        raise HTTPException(400, f"month must be an ISO date, got {month!r}") from None
+    if first.day != 1:
+        raise HTTPException(400, f"month must be the first day of a month, got {month!r}")
+    snap, as_of_date = _snapshot_id(as_of)
+    rows = _q(
+        """SELECT p.property_code::text AS property_code, p.property_name,
+                  u.unit_code, ut.unit_type_code, l.unit_sqft,
+                  l.occupancy_status::text AS occupancy_status,
+                  l.section::text AS section, l.resident_id, r.display_name,
+                  l.market_rent, l.charges_total, l.balance,
+                  l.move_in, l.lease_expiration, l.move_out,
+                  (l.lease_expiration < s.as_of_date) AS holdover,
+                  l.lease_id
+           FROM core.lease l
+           JOIN core.snapshot s ON s.snapshot_id = l.snapshot_id
+           JOIN core.property p ON p.property_id = l.property_id
+           JOIN core.unit u     ON u.unit_id = l.unit_id
+           LEFT JOIN core.unit_type ut ON ut.unit_type_id = l.unit_type_id
+           LEFT JOIN core.resident r   ON r.resident_id = l.resident_id
+           WHERE l.snapshot_id = %s
+             AND l.occupancy_status IN ('occupied','notice')
+             AND l.lease_expiration IS NOT NULL
+             AND date_trunc('month', l.lease_expiration)::date = %s::date
+           ORDER BY p.property_code, u.unit_code""",
+        (snap, first),
+    )
+    return {"month": first.isoformat(), "as_of": as_of_date, "total": len(rows), "rows": rows}
+
+
 @app.get("/api/insights")
 def insights(as_of: str | None = None) -> dict:
     snap, _ = _snapshot_id(as_of)

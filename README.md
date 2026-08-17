@@ -94,11 +94,13 @@ aker-etl validate      # issue counts by rule and severity
 aker-etl serve                       # http://127.0.0.1:8000
 ```
 
-Six tabs: **Portfolio** (KPIs, occupancy, expiration ladder, profitability
-ranking), **Properties** (click any row for unit types, charge mix, expirations
-and the report's own rollups), **Matrix** (revenue capture vs. occupancy
-four-quadrant scatter; see below), **Units** (filter and search 4,106 lease
-blocks; click a row for its charge lines), **Insights**, **Data quality**.
+Six tabs: **Portfolio** (KPIs, profitability ranking, occupancy, expiration
+ladder - click any bar in the first three to drill in), **Properties** (click
+any row for unit types, charge mix, expirations and the report's own rollups),
+**Matrix** (revenue capture vs. occupancy four-quadrant scatter; see below),
+**Units** (filter and search 4,106 lease blocks; click a row for its charge
+lines), **Insights** (filter by category, click one to open the property or
+asset it is about), **Data quality**.
 
 **The Matrix tab.** The source workbooks carry no expense data, so true
 profitability (NOI, cap rate) cannot be computed. `mart.property_profitability`
@@ -109,6 +111,14 @@ excluded rather than plotted, along with three zero-unit books and four
 commercial books with no market rent - 13 of 25 in all, listed with their
 reason on the "Not plotted" table. The same view drives the Portfolio tab's
 profitability ranking and, per property, a quadrant-movement insight.
+
+**Drilling in from the Portfolio tab.** The profitability and occupancy bars
+open the property they name. Each bar of the expiration ladder opens the leases
+behind it, served by `/api/leases/expiring?month=YYYY-MM-01`; that endpoint
+repeats `mart.expiration_schedule`'s own predicate, and
+`tests/test_dashboard_expiring.py` asserts the two agree for every month, so a
+drill-down can never quietly disagree with the bar it came from *for a
+refreshed snapshot* (`mart.expiration_schedule` is a materialized view).
 
 ### Step 8 - optional: the insight panel
 
@@ -224,8 +234,8 @@ is a convenience wrapper, not a build system; nothing depends on it.
 ## 4. Tests
 
 ```bash
-pytest -m "not integration"        # 69 tests, ~1.5s, no database needed
-pytest -m integration              # 19 tests, needs the container running
+pytest -m "not integration"        # 97 tests, ~1.5s, no database needed
+pytest -m integration              # 43 tests, needs the container running
 pytest                             # everything
 make check                         # ruff + mypy + unit tests
 ```

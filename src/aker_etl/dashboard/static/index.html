@@ -86,6 +86,9 @@
   .insight h3 { font-size:14px; margin:0 0 4px; }
   .insight .meta { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
   .insight .ev { font-family:var(--mono); font-size:12px; color:var(--muted); margin-top:6px; }
+  .insight.clickable { cursor:pointer; }
+  .insight.clickable:hover { background:var(--accent-soft); }
+  .insight.clickable:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .empty { color:var(--muted); padding:22px; text-align:center; border:1px dashed var(--line);
            border-radius:8px; }
   .q-chip { display:inline-block; padding:2px 10px; border-radius:999px; font-size:11px; font-weight:650; }
@@ -101,6 +104,10 @@
   .chip { display:inline-block; padding:1px 8px; border-radius:999px; border:1px solid var(--line);
           font-size:11px; cursor:pointer; font-family:var(--mono); background:none; color:var(--ink); }
   .chip:hover { background:var(--accent-soft); }
+  .chip.on { background:var(--accent-soft); color:var(--accent); border-color:var(--accent);
+             font-weight:650; }
+  .chip .n { color:var(--muted); margin-left:5px; }
+  .chip.on .n { color:inherit; }
   .badge { margin-left:auto; font-size:11px; color:var(--muted); text-transform:uppercase;
            letter-spacing:.05em; border:1px solid var(--line); border-radius:999px; padding:2px 8px; }
   .picker-row { display:flex; justify-content:space-between; gap:10px; padding:9px 4px;
@@ -119,6 +126,9 @@
   .close { margin-left:auto; background:none; border:1px solid var(--line); border-radius:7px;
            color:var(--muted); cursor:pointer; padding:4px 10px; }
   svg text { fill:var(--muted); font-size:10px; }
+  .exp-col { cursor:pointer; }
+  .exp-col:hover rect:first-child { fill:var(--accent-soft); }
+  .exp-col:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 </style>
 </head>
 <body>
@@ -140,24 +150,26 @@
     <div class="tiles" id="tiles"></div>
     <div class="grid">
       <div class="card">
-        <h2>Occupancy by property</h2>
-        <p class="hint">Occupied + notice, over current-section units. Amber marks below 90%.</p>
-        <div id="occ-bars"></div>
-      </div>
-      <div class="card">
-        <h2>Lease expiration ladder</h2>
-        <p class="hint">Occupied and notice leases by expiry month. Months before the as-of date are month-to-month holdovers.</p>
-        <div id="exp-chart"></div>
-      </div>
-    </div>
-    <div class="grid">
-      <div class="card">
         <h2>Profitability ranking</h2>
         <p class="hint">Revenue capture - billed charges as a share of gross potential
           rent - lowest first. No expense data exists in the source, so this ranks
           revenue efficiency, not NOI. Click a row to open the property.</p>
         <div id="profit-rank"></div>
         <p class="hint" id="profit-rank-note"></p>
+      </div>
+      <div class="card">
+        <h2>Occupancy by property</h2>
+        <p class="hint">Occupied + notice, over current-section units. Amber marks below 90%.
+          Click a bar to open the property.</p>
+        <div id="occ-bars"></div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h2>Lease expiration ladder</h2>
+        <p class="hint">Occupied and notice leases by expiry month. Months before the as-of date are
+          month-to-month holdovers. Click a bar for the leases expiring that month.</p>
+        <div id="exp-chart"></div>
       </div>
       <div class="card">
         <h2>Unit status</h2>
@@ -226,6 +238,8 @@
     <div class="card">
       <h2>Generated insights</h2>
       <p class="hint" id="insight-meta"></p>
+      <div class="controls" id="insight-filters"></div>
+      <p class="hint" id="insight-shown" style="margin:0 0 12px"></p>
       <div id="insight-list"></div>
     </div>
   </section>
@@ -284,7 +298,10 @@ function table(el, cols, rows, opts = {}) {
   // On the element, not in this closure: the sort handler re-enters table() to
   // render, and a closure-local map would be recreated empty on every render, so
   // `!undefined` made every click sort ascending and nothing ever reversed.
-  const dir = el._sortDir || (el._sortDir = {});
+  // A caller that rebuilds its table element (the month drill-down does, every
+  // time "Back to list" re-renders it) passes its own `sortDir` and `onSort` so
+  // the sort survives the new element.
+  const dir = opts.sortDir || el._sortDir || (el._sortDir = {});
   el.querySelectorAll("th").forEach(th => th.onclick = () => {
     const c = cols[+th.dataset.i];
     dir[c.key] = !dir[c.key];
@@ -294,6 +311,7 @@ function table(el, cols, rows, opts = {}) {
       const r = (c.num ? av - bv : String(av).localeCompare(String(bv)));
       return dir[c.key] ? r : -r;
     });
+    if (opts.onSort) opts.onSort(s);
     table(el, cols, s, opts);
   });
   if (opts.onRow) el.querySelectorAll("tbody tr").forEach(tr =>
@@ -318,24 +336,55 @@ function bars(el, items, {fmt = num, warnAt = null, domain = null, colorFor = nu
 
 function expChart(el, rows, asOf) {
   if (!rows.length) { el.innerHTML = '<p class="empty">No dated expirations.</p>'; return; }
-  const W = 640, H = 190, pad = {l:34, r:8, t:8, b:30};
+  // 640x460, not 640x190: this card moved to the bottom-left slot (PLAN4 change A),
+  // opposite a full-height bar list, and a 190-tall chart left the row visibly lopsided.
+  const W = 640, H = 460, pad = {l:40, r:10, t:12, b:34};
   const max = Math.max(...rows.map(r => +r.expiring_leases));
   const bw = (W - pad.l - pad.r) / rows.length;
-  const bars = rows.map((r,i) => {
-    const h = (H - pad.t - pad.b) * (+r.expiring_leases / max);
-    const x = pad.l + i*bw, y = H - pad.b - h;
+  const plotH = H - pad.t - pad.b;
+  const sy = v => H - pad.b - plotH * (v / max);
+
+  const cols = rows.map((r, i) => {
+    const h = plotH * (+r.expiring_leases / max);
+    const x = pad.l + i * bw, y = H - pad.b - h;
     const past = r.expiry_month < asOf;
-    return `<rect x="${x+1}" y="${y}" width="${Math.max(bw-2,1)}" height="${h}"
-      fill="${past ? "var(--warn)" : "var(--accent)"}" rx="2">
-      <title>${r.expiry_month}: ${r.expiring_leases} leases, ${money(r.charges_at_risk)}/mo${past?" (holdover)":""}</title></rect>`;
+    return `<g class="exp-col" tabindex="0" role="button" data-month="${esc(r.expiry_month)}"
+        aria-label="${esc(r.expiry_month)}: ${r.expiring_leases} leases expiring">
+      <rect x="${x}" y="${pad.t}" width="${bw}" height="${plotH}" fill="transparent"/>
+      <rect x="${x + 1}" y="${y}" width="${Math.max(bw - 2, 1)}" height="${h}"
+        fill="${past ? "var(--warn)" : "var(--accent)"}" rx="2"/>
+      <title>${r.expiry_month}: ${r.expiring_leases} leases, ${money(r.charges_at_risk)}/mo${past ? " (holdover)" : ""} - click for the list</title>
+    </g>`;
   }).join("");
-  const ticks = rows.map((r,i) => (i % Math.ceil(rows.length/8) === 0)
-    ? `<text x="${pad.l+i*bw+bw/2}" y="${H-10}" text-anchor="middle">${r.expiry_month.slice(0,7)}</text>` : "").join("");
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img">
-    <line x1="${pad.l}" y1="${H-pad.b}" x2="${W-pad.r}" y2="${H-pad.b}" stroke="var(--line)"/>
-    <text x="4" y="${pad.t+9}">${max}</text><text x="4" y="${H-pad.b}">0</text>
-    ${bars}${ticks}</svg>
-    <p class="hint" style="margin:6px 0 0">Amber = expired before the as-of date (month-to-month holdover).</p>`;
+
+  const yVals = [...new Set([0, 1, 2, 3, 4].map(k => Math.round(max * k / 4)))];
+  const yAxis = yVals.map(v => `
+    <line x1="${pad.l}" y1="${sy(v)}" x2="${W - pad.r}" y2="${sy(v)}" stroke="var(--line)"
+      stroke-width="0.5"/>
+    <text x="${pad.l - 6}" y="${sy(v) + 3}" text-anchor="end">${v}</text>`).join("");
+
+  const every = Math.ceil(rows.length / 8);
+  const ticks = rows.map((r, i) => (i % every === 0)
+    ? `<text x="${pad.l + i * bw + bw / 2}" y="${H - 12}" text-anchor="middle">${r.expiry_month.slice(0, 7)}</text>`
+    : "").join("");
+
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="group" aria-label="Lease expiration ladder, ${rows.length} months">
+    ${cols}
+    ${yAxis}
+    <line x1="${pad.l}" y1="${H - pad.b}" x2="${W - pad.r}" y2="${H - pad.b}" stroke="var(--line)"/>
+    ${ticks}</svg>
+    <p class="hint" style="margin:6px 0 0">Amber = expired before the as-of date (month-to-month
+      holdover). Click a bar for every lease behind it.</p>`;
+
+  el.querySelectorAll(".exp-col").forEach(g => {
+    const open = () => openExpirationMonth(g.dataset.month);
+    g.addEventListener("click", open);
+    g.addEventListener("keydown", ev => {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      ev.preventDefault();
+      open();
+    });
+  });
 }
 
 const QUADRANT_COLOR = {
@@ -349,7 +398,48 @@ const QUADRANT_BG = {
 
 let MATRIX = null;
 let POINTS = [];        // plotted dots in view-coordinates, for hit-testing
-let PICKER_STACK = null; // set while the property dialog was reached through the overlap picker
+// A dialog reached from a list keeps a way back to that list. Holding the
+// re-open *callback* rather than the list's data is what lets three unrelated
+// lists (matrix overlap points, an asset's books, a month's leases) share one
+// back button without three parallel globals.
+let PICKER_BACK = null;   // () => void, or null when this dialog has no parent list
+
+function setBackButton(fromPicker) {
+  if (!fromPicker) PICKER_BACK = null;
+  $("#dlg-back-slot").innerHTML = PICKER_BACK
+    ? `<button class="back-btn" id="dlg-back">Back to list</button>` : "";
+  if (PICKER_BACK) $("#dlg-back").onclick = PICKER_BACK;
+}
+
+// Closing the dialog ends the trail it was showing: a back button rendered for
+// one list must not outlive its dialog. Belt and braces only - every path that
+// opens the dialog also decides its own back state (setBackButton, the month
+// drill-down's render, dialogError), because the close event does not reach the
+// page when a debugger is attached to the tab.
+$("#dlg").addEventListener("close", () => {
+  PICKER_BACK = null;
+  $("#dlg-back-slot").innerHTML = "";
+});
+
+// FastAPI's 422 body carries `detail` as a list of objects, not a string, and a
+// network failure rejects with an Error instead of a body at all.
+const errText = e => (typeof (e && e.detail) === "string" && e.detail)
+  || (e && e.message) || "Failed to load.";
+
+// An error on top of an open dialog leaves PICKER_BACK and the back slot alone:
+// the list the user came from is still behind it, and destroying the way back is
+// what strands them. An error that *opens* the dialog has no list behind it, so
+// it starts no trail - otherwise the back button of whatever was shown last
+// reappears above it, pointing at a list this dialog never came from.
+function dialogError(title, e) {
+  if (!$("#dlg").open) {
+    PICKER_BACK = null;
+    $("#dlg-back-slot").innerHTML = "";
+  }
+  $("#dlg-title").textContent = title;
+  $("#dlg-body").innerHTML = `<div class="empty">${esc(errText(e))}</div>`;
+  if (!$("#dlg").open) $("#dlg").showModal();
+}
 
 function svgPoint(svg, ev) {
   const pt = svg.createSVGPoint();
@@ -408,7 +498,8 @@ function matrixPlot(el, data) {
                            r: 5 + 17 * Math.sqrt((+p.units) / maxUnits)}));
 
   const dots = POINTS.map(p => `
-    <circle tabindex="0" data-code="${esc(p.property_code)}" data-cx="${p.cx}" data-cy="${p.cy}"
+    <circle tabindex="0" role="button" data-code="${esc(p.property_code)}" data-cx="${p.cx}" data-cy="${p.cy}"
+      aria-label="${esc(p.property_code)} ${esc(p.property_name)}, ${esc(data.quadrants[p.quadrant].label)}, capture ${pct(p.revenue_capture_pct)}, occupancy ${pct(p.pct_occupied)}, ${num(p.units)} units"
       cx="${p.cx}" cy="${p.cy}" r="${p.r}" fill="${QUADRANT_COLOR[p.quadrant]}" fill-opacity="0.75"
       stroke="var(--panel)" stroke-width="1.5">
       <title>${esc(p.property_code)} - ${esc(p.property_name)} · capture ${pct(p.revenue_capture_pct)} · occupancy ${pct(p.pct_occupied)} · ${num(p.units)} units</title>
@@ -422,7 +513,7 @@ function matrixPlot(el, data) {
     yTicks.push(`<text x="${pad.l-8}" y="${sy(yv)+3}" text-anchor="end">${yv.toFixed(0)}</text>`);
   }
 
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" id="matrix-svg">
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="group" aria-label="Occupancy vs revenue capture matrix, ${POINTS.length} properties" id="matrix-svg">
     ${quadRects}
     <line x1="${xThresh}" y1="${pad.t}" x2="${xThresh}" y2="${pad.t+yh}" stroke="var(--line)" stroke-dasharray="4 3"/>
     <line x1="${pad.l}" y1="${yThresh}" x2="${pad.l+xw}" y2="${yThresh}" stroke="var(--line)" stroke-dasharray="4 3"/>
@@ -501,7 +592,7 @@ async function loadMatrix() {
 }
 
 function openPointPicker(points) {
-  PICKER_STACK = points;
+  PICKER_BACK = null;
   $("#dlg-back-slot").innerHTML = "";
   $("#dlg-title").textContent = `${points.length} propert${points.length===1?"y":"ies"} at this point`;
   $("#dlg-body").innerHTML = `<div id="picker-list"></div>`;
@@ -513,6 +604,81 @@ function openPointPicker(points) {
     </div>`).join("");
   $("#picker-list").querySelectorAll(".picker-row").forEach(row =>
     row.onclick = () => openProperty(row.dataset.code, {fromPicker: true}));
+  PICKER_BACK = () => openPointPicker(points);
+  if (!$("#dlg").open) $("#dlg").showModal();
+}
+
+async function openExpirationMonth(month) {
+  let d;
+  try {
+    d = await api(`/api/leases/expiring?month=${encodeURIComponent(month)}${SUMMARY ? `&as_of=${encodeURIComponent(SUMMARY.as_of)}` : ""}`);
+  } catch (e) {
+    dialogError(`Leases expiring ${month.slice(0, 7)}`, e);
+    return;
+  }
+  const label = month.slice(0, 7);
+  const chargesAtRisk = d.rows.reduce((s, r) => s + (r.charges_total || 0), 0);
+  // `view` and `sortDir` live outside render() so that opening a lease and
+  // pressing "Back to list" re-renders the table the user sorted, not the
+  // server's order: render() rebuilds #d-exp-leases, and a fresh element carries
+  // none of table()'s own state.
+  let view = d.rows;
+  const sortDir = {};
+  const render = () => {
+    $("#dlg-back-slot").innerHTML = "";
+    $("#dlg-title").textContent = `Leases expiring ${label}`;
+    $("#dlg-body").innerHTML = `
+      <p class="muted">${num(d.total)} occupied or notice lease${d.total === 1 ? "" : "s"} expiring in
+        ${esc(label)}, ${money(chargesAtRisk)} at risk${d.rows.some(r => r.holdover) ? ", including month-to-month holdovers already past the as-of date" : ""}.
+        Click a row for its charge lines.</p>
+      <table id="d-exp-leases"></table>`;
+    table($("#d-exp-leases"), [
+      {key:"property_code", label:"Property"},
+      {key:"unit_code", label:"Unit"},
+      {key:"unit_type_code", label:"Type"},
+      {key:"occupancy_status", label:"Status",
+       render:r=>`<span class="pill ${r.occupancy_status}">${r.occupancy_status}</span>`},
+      {key:"display_name", label:"Resident", render:r=>esc(r.display_name || "-")},
+      {key:"lease_expiration", label:"Expires",
+       render:r=>`<span class="${r.holdover ? "neg" : ""}">${esc(r.lease_expiration || "-")}${r.holdover ? " (holdover)" : ""}</span>`},
+      {key:"market_rent", label:"Market rent", num:true, render:r=>money2(r.market_rent)},
+      {key:"charges_total", label:"Charges", num:true, render:r=>money2(r.charges_total)},
+      {key:"balance", label:"Balance", num:true,
+       render:r=>`<span class="${r.balance<0?"neg":""}">${money2(r.balance)}</span>`},
+    ], view, {onRow: r => openLease(r, {fromPicker: true}),
+              sortDir, onSort: s => { view = s; }});
+    PICKER_BACK = render;
+  };
+  PICKER_BACK = null;
+  render();
+  if (!$("#dlg").open) $("#dlg").showModal();
+}
+
+function openBookPicker(assetKey) {
+  // SUMMARY.properties, not SUMMARY.assets: the assets array is built from
+  // mart.asset_snapshot_kpi, which is grouped off the KPI view and therefore has
+  // no row for a book with zero leases. core.property does, and /api/summary
+  // drives its properties list from core.property.
+  const books = (SUMMARY ? SUMMARY.properties : []).filter(p => p.asset_key === assetKey);
+  if (books.length === 1) return openProperty(books[0].property_code);
+  PICKER_BACK = null;
+  $("#dlg-back-slot").innerHTML = "";
+  $("#dlg-title").textContent = `Asset ${assetKey}`;
+  if (!books.length) {
+    $("#dlg-body").innerHTML = `<p class="empty">No books found for asset ${esc(assetKey)}.</p>`;
+    if (!$("#dlg").open) $("#dlg").showModal();
+    return;
+  }
+  $("#dlg-body").innerHTML = `<p class="hint">This insight is about the whole asset -
+    ${books.length} books. Pick one to open.</p><div id="picker-list"></div>`;
+  $("#picker-list").innerHTML = books.map(p => `
+    <div class="picker-row" data-code="${esc(p.property_code)}">
+      <span><strong>${esc(p.property_code)}</strong> ${esc(p.property_name)}</span>
+      <span class="muted">${num(p.units)} units · occ ${pct(p.pct_occupied)}</span>
+    </div>`).join("");
+  $("#picker-list").querySelectorAll(".picker-row").forEach(row =>
+    row.onclick = () => openProperty(row.dataset.code, {fromPicker: true}));
+  PICKER_BACK = () => openBookPicker(assetKey);
   if (!$("#dlg").open) $("#dlg").showModal();
 }
 
@@ -570,8 +736,9 @@ async function loadSummary() {
 
   bars($("#occ-bars"), d.properties.filter(x => x.units > 0)
         .sort((a,b) => a.pct_occupied - b.pct_occupied)
-        .map(x => ({label:x.property_code, title:x.property_name, value:+x.pct_occupied})),
-       {fmt:pct, warnAt:90});
+        .map(x => ({label:x.property_code, title:x.property_name, value:+x.pct_occupied,
+                    property_code:x.property_code})),
+       {fmt:pct, warnAt:90, onItem: i => openProperty(i.property_code)});
   expChart($("#exp-chart"), d.expirations, d.as_of);
   bars($("#status-bars"), d.status_mix.map(s => ({label:s.status, value:+s.n})));
 
@@ -611,13 +778,12 @@ async function loadSummary() {
 }
 
 async function openProperty(code, opts = {}) {
-  if (!opts.fromPicker) PICKER_STACK = null;
-  const d = await api(`/api/property/${encodeURIComponent(code)}`);
+  let d;
+  try { d = await api(`/api/property/${encodeURIComponent(code)}`); }
+  catch (e) { return dialogError(`Property ${code}`, e); }
   const k = d.kpi, ltl = d.loss_to_lease[0] || {};
   const matrixRow = (d.matrix && d.matrix.length) ? d.matrix[0] : null;
-  $("#dlg-back-slot").innerHTML = PICKER_STACK
-    ? `<button class="back-btn" id="dlg-back">Back to list</button>` : "";
-  if (PICKER_STACK) $("#dlg-back").onclick = () => openPointPicker(PICKER_STACK);
+  setBackButton(opts.fromPicker);
   $("#dlg-title").textContent = `${k.property_code} - ${k.property_name}`;
   $("#dlg-body").innerHTML = `
     <div class="tiles">
@@ -696,10 +862,14 @@ async function loadUnits() {
   ], d.rows, {onRow: r => openLease(r)});
 }
 
-async function openLease(r) {
-  PICKER_STACK = null;
-  $("#dlg-back-slot").innerHTML = "";
-  const charges = await api(`/api/lease/${r.lease_id}/charges`);
+async function openLease(r, opts = {}) {
+  // After the await, not before: setBackButton() drops PICKER_BACK when this
+  // lease was not reached from a list, so running it first and then failing the
+  // fetch would strip the back button off whatever dialog stays on screen.
+  let charges;
+  try { charges = await api(`/api/lease/${r.lease_id}/charges`); }
+  catch (e) { return dialogError(`Unit ${r.unit_code} charges`, e); }
+  setBackButton(opts.fromPicker);
   $("#dlg-title").textContent = `${r.property_code} · unit ${r.unit_code} · ${r.occupancy_status}`;
   const sum = charges.reduce((a,c) => a + Number(c.amount), 0);
   $("#dlg-body").innerHTML = `
@@ -720,27 +890,94 @@ async function openLease(r) {
   if (!$("#dlg").open) $("#dlg").showModal();
 }
 
-async function loadInsights() {
-  const d = await api("/api/insights");
-  const lr = d.last_run;
-  $("#insight-meta").innerHTML = d.insights.length
-    ? `Generated once per snapshot by a local model (${esc(d.insights[0].model)}) and stored - every cited figure is checked against the source payload before it is saved.`
-    : "";
-  if (!d.insights.length) {
-    $("#insight-list").innerHTML = `<div class="empty">No insights generated for this snapshot.
-      ${lr ? `Last run: <strong>${esc(lr.status)}</strong>${lr.error ? " - " + esc(lr.error) : ""}.` : ""}
-      <br>Run <code>aker-etl insights generate</code> with Ollama available.</div>`;
+// The four categories the user asked to filter on lead; anything else the
+// snapshot happens to contain follows, alphabetically. Building the list from
+// the response rather than from this constant is what keeps an insight in a
+// category nobody anticipated from becoming unreachable.
+const INSIGHT_CAT_FIRST = ["data_quality", "concession", "revenue", "expiration"];
+let INSIGHTS = [];
+let INSIGHT_CATS = new Set();   // empty = show everything
+
+function renderInsightFilters() {
+  const counts = {};
+  INSIGHTS.forEach(i => counts[i.category] = (counts[i.category] || 0) + 1);
+  const present = Object.keys(counts);
+  const ordered = [
+    ...INSIGHT_CAT_FIRST.filter(c => present.includes(c)),
+    ...present.filter(c => !INSIGHT_CAT_FIRST.includes(c)).sort(),
+  ];
+  const chip = (cat, label, count, on) =>
+    `<button class="chip ${on ? "on" : ""}" data-cat="${esc(cat)}" aria-pressed="${on}">${esc(label)}<span class="n">${count}</span></button>`;
+  $("#insight-filters").innerHTML =
+    chip("", "All", INSIGHTS.length, INSIGHT_CATS.size === 0) +
+    ordered.map(c => chip(c, c.replace(/_/g, " "), counts[c], INSIGHT_CATS.has(c))).join("");
+  $("#insight-filters").querySelectorAll(".chip").forEach(b => b.onclick = () => {
+    const c = b.dataset.cat;
+    if (!c) INSIGHT_CATS = new Set();
+    else if (INSIGHT_CATS.has(c)) INSIGHT_CATS.delete(c);
+    else INSIGHT_CATS.add(c);
+    renderInsightFilters();
+    renderInsightList();
+  });
+}
+
+function renderInsightList() {
+  const shown = INSIGHT_CATS.size
+    ? INSIGHTS.filter(i => INSIGHT_CATS.has(i.category)) : INSIGHTS;
+  $("#insight-shown").textContent = shown.length === INSIGHTS.length
+    ? `${num(INSIGHTS.length)} insights`
+    : `${num(shown.length)} of ${num(INSIGHTS.length)} insights`;
+  if (!shown.length) {
+    $("#insight-list").innerHTML = `<div class="empty">No insights in the selected categories.</div>`;
     return;
   }
-  $("#insight-list").innerHTML = d.insights.map(i => `
-    <div class="insight ${i.priority}">
+  $("#insight-list").innerHTML = shown.map(i => {
+    const kind = i.scope === "property" && i.property_code ? "property"
+               : i.scope === "asset" && i.asset_key ? "asset" : "";
+    const id = kind === "property" ? i.property_code : kind === "asset" ? i.asset_key : "";
+    const attrs = kind
+      ? ` data-kind="${kind}" data-id="${esc(id)}" tabindex="0" role="button" aria-label="${esc(i.headline)} - open ${esc(id)}"`
+      : "";
+    return `<div class="insight ${esc(i.priority)}${kind ? " clickable" : ""}"${attrs}>
       <div class="meta">${esc(i.priority)} · ${esc(i.category)} · ${esc(i.scope)}${
         i.property_code ? " " + esc(i.property_code) : i.asset_key ? " " + esc(i.asset_key) : ""}</div>
       <h3>${esc(i.headline)}</h3>
       <div>${esc(i.detail)}</div>
       <div class="ev">${(i.evidence||[]).map(e =>
         `${esc(e.metric)} = ${esc(e.value)}${e.comparison ? " (" + esc(e.comparison) + ")" : ""}`).join(" · ")}</div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
+  $("#insight-list").querySelectorAll(".insight.clickable").forEach(el => {
+    const open = () => el.dataset.kind === "property"
+      ? openProperty(el.dataset.id)
+      : openBookPicker(el.dataset.id);
+    el.addEventListener("click", open);
+    el.addEventListener("keydown", ev => {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      ev.preventDefault();
+      open();
+    });
+  });
+}
+
+async function loadInsights() {
+  const d = await api("/api/insights");
+  const lr = d.last_run;
+  INSIGHTS = d.insights;
+  INSIGHT_CATS = new Set();
+  $("#insight-meta").innerHTML = INSIGHTS.length
+    ? `Generated once per snapshot by a local model (${esc(INSIGHTS[0].model)}) and stored - every cited figure is checked against the source payload before it is saved. Click an insight to open what it is about.`
+    : "";
+  if (!INSIGHTS.length) {
+    $("#insight-filters").innerHTML = "";
+    $("#insight-shown").textContent = "";
+    $("#insight-list").innerHTML = `<div class="empty">No insights generated for this snapshot.
+      ${lr ? `Last run: <strong>${esc(lr.status)}</strong>${lr.error ? " - " + esc(lr.error) : ""}.` : ""}
+      <br>Run <code>aker-etl insights generate</code> with Ollama available.</div>`;
+    return;
+  }
+  renderInsightFilters();
+  renderInsightList();
 }
 
 async function loadQuality() {
@@ -793,14 +1030,23 @@ $("#unit-next").onclick = () => { UNIT_OFFSET += UNIT_LIMIT; loadUnits(); };
   }
   // allSettled, not all: one tab's endpoint failing (e.g. /api/insights 500) must
   // not blank the other tabs that already loaded fine.
-  const tabs = [["matrix", loadMatrix], ["units", loadUnits], ["insights", loadInsights], ["quality", loadQuality]];
+  // Slots, not `#<tab> .card`: /api/matrix fills the Matrix tab *and* the
+  // Portfolio tab's profitability ranking, so a matrix failure has to be
+  // reported in two places or the landing tab shows an unexplained blank card.
+  const tabs = [
+    ["matrix",   loadMatrix,   ["#matrix .card", "#profit-rank"]],
+    ["units",    loadUnits,    ["#units .card"]],
+    ["insights", loadInsights, ["#insights .card"]],
+    ["quality",  loadQuality,  ["#quality .card"]],
+  ];
   const results = await Promise.allSettled(tabs.map(([, fn]) => fn()));
   results.forEach((res, i) => {
     if (res.status !== "rejected") return;
-    const [id] = tabs[i];
+    const [id, , slots] = tabs[i];
     const e = res.reason;
-    const card = document.querySelector(`#${id} .card`) || document.querySelector(`#${id}`);
-    card.innerHTML = `<div class="empty">${esc(e.detail || e.message || "Failed to load.")}</div>`;
+    const msg = `<div class="empty">${esc(e.detail || e.message || "Failed to load.")}</div>`;
+    const targets = slots.map(s => document.querySelector(s)).filter(Boolean);
+    (targets.length ? targets : [document.querySelector(`#${id}`)]).forEach(t => t.innerHTML = msg);
   });
 })();
 </script>
