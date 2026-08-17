@@ -129,6 +129,16 @@
   .exp-col { cursor:pointer; }
   .exp-col:hover rect:first-child { fill:var(--accent-soft); }
   .exp-col:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+  .export-links { margin-top:10px; }
+  .ev-item { display:inline-block; background:none; border:1px solid transparent; border-radius:5px;
+             padding:1px 4px; margin:1px 2px 1px 0; font-family:var(--mono); font-size:12px;
+             color:var(--muted); cursor:pointer; }
+  .ev-item:hover { border-color:var(--line); background:var(--accent-soft); color:var(--ink); }
+  .prov { margin:4px 0 10px; padding:8px 10px; border:1px solid var(--line); border-radius:7px;
+          font-size:12px; }
+  .prov .path { display:block; font-family:var(--mono); color:var(--muted); margin-top:2px; }
+  .prov.stale { border-color:var(--warn); }
+  .prov.missing { border-color:var(--bad); }
 </style>
 </head>
 <body>
@@ -139,6 +149,7 @@
     <button data-tab="portfolio" class="on">Portfolio</button>
     <button data-tab="properties">Properties</button>
     <button data-tab="matrix">Matrix</button>
+    <button data-tab="economics">Economics</button>
     <button data-tab="units">Units</button>
     <button data-tab="insights">Insights</button>
     <button data-tab="quality">Data quality</button>
@@ -165,7 +176,7 @@
       </div>
     </div>
     <div class="grid">
-      <div class="card">
+      <div class="card" id="exp-card">
         <h2>Lease expiration ladder</h2>
         <p class="hint">Occupied and notice leases by expiry month. Months before the as-of date are
           month-to-month holdovers. Click a bar for the leases expiring that month.</p>
@@ -177,7 +188,7 @@
         <div id="status-bars"></div>
       </div>
     </div>
-    <div class="card">
+    <div class="card" id="assets-card">
       <h2>Assets</h2>
       <p class="hint">Books of one physical asset rolled up - 134c, 134land and 134r are one property.</p>
       <div class="scroll"><table id="asset-table"></table></div>
@@ -185,7 +196,7 @@
   </section>
 
   <section id="properties">
-    <div class="card">
+    <div class="card" id="properties-card">
       <h2>Properties</h2>
       <p class="hint">Click a row for unit types, charge mix, expirations and the report's own rollups.</p>
       <div class="scroll"><table id="prop-table"></table></div>
@@ -193,7 +204,7 @@
   </section>
 
   <section id="matrix">
-    <div class="card">
+    <div class="card" id="matrix-card">
       <h2>Profitability matrix</h2>
       <p class="hint">Revenue capture (billed charges as a share of gross potential
         rent) against physical occupancy. The source workbooks contain no expense
@@ -215,8 +226,42 @@
     </div>
   </section>
 
+  <section id="economics">
+    <div class="card" id="bridge-card">
+      <h2>Revenue bridge</h2>
+      <p class="hint">Gross potential rent to billed charges, one step at a time. Current-section
+        units only. The source workbooks carry no expense data, so this stops at billed revenue and
+        never reaches NOI. Books whose rent roll prints no lease-charge lines are excluded - a zero
+        there is missing data, not a fact about the asset.</p>
+      <div class="controls"><select id="bridge-scope"></select></div>
+      <div id="bridge-chart"></div>
+      <p class="hint" id="bridge-check"></p>
+    </div>
+    <div class="grid">
+      <div class="card" id="outlier-card">
+        <h2>Rent positioning</h2>
+        <p class="hint">Every occupied and notice unit against the median asking rent of its own
+          unit type in its own book. Types with fewer than 3 units are not plotted - a median over
+          one unit is that unit. Click a dot for the lease's charge lines.</p>
+        <div class="controls"><select id="outlier-scope"></select></div>
+        <div id="outlier-plot"></div>
+      </div>
+      <div class="card">
+        <h2>Largest gaps to type median</h2>
+        <p class="hint">Amber marks a lease expiring within 120 days - an under-market unit with a
+          near-term expiry is the one you can actually reprice.</p>
+        <div class="scroll"><table id="outlier-table"></table></div>
+      </div>
+    </div>
+    <div class="card" id="concentration-card">
+      <h2>Expiration concentration</h2>
+      <p class="hint" id="concentration-note"></p>
+      <div class="scroll"><table id="concentration-table"></table></div>
+    </div>
+  </section>
+
   <section id="units">
-    <div class="card">
+    <div class="card" id="units-card">
       <h2>Unit explorer</h2>
       <div class="controls">
         <select id="f-prop"><option value="">All properties</option></select>
@@ -235,6 +280,13 @@
   </section>
 
   <section id="insights">
+    <div class="card" id="anomaly-card" hidden>
+      <h2>Computed findings</h2>
+      <p class="hint">Each book's metric against the rest of the portfolio for this snapshot, as a
+        z-score. Arithmetic, not inference - these are present whether or not a model has ever run.
+        Rates and per-unit figures only, so a 775-unit book is not an outlier for being large.</p>
+      <div id="anomaly-list"></div>
+    </div>
     <div class="card">
       <h2>Generated insights</h2>
       <p class="hint" id="insight-meta"></p>
@@ -245,13 +297,13 @@
   </section>
 
   <section id="quality">
-    <div class="card">
+    <div class="card" id="recon-card">
       <h2>Detail vs report reconciliation</h2>
       <p class="hint">Rent roll detail against the availability report and the rent roll's own summary block. Non-zero rows are real upstream disagreements, surfaced rather than hidden.</p>
       <div class="scroll"><table id="recon-table"></table></div>
     </div>
     <div class="grid">
-      <div class="card">
+      <div class="card" id="issues-card">
         <h2>Load issues</h2>
         <p class="hint">From the most recent completed ingest run.</p>
         <table id="issue-table"></table>
@@ -261,10 +313,19 @@
         <table id="run-table"></table>
       </div>
     </div>
-    <div class="card">
+    <div class="card" id="review-card" hidden>
+      <h2>Charge codes needing review <span class="badge" id="review-count"></span></h2>
+      <p class="hint">Category inferred from the code string, never confirmed. The dashboard is
+        read-only by design - copy the command, run it, and the change is recorded in
+        <code>core.charge_code_audit</code>.</p>
+      <div id="review-list"></div>
+    </div>
+    <div class="card" id="charge-codes-card">
       <h2>Charge codes</h2>
       <p class="hint">Codes marked <em>inferred</em> had their category guessed from the code string - worth a confirmation with the asset team.</p>
       <div class="scroll"><table id="code-table"></table></div>
+      <h2 style="margin-top:18px">Recent reclassifications</h2>
+      <div class="scroll"><table id="audit-table"></table></div>
     </div>
   </section>
 </main>
@@ -275,16 +336,53 @@
 
 <script>
 const $ = s => document.querySelector(s);
-const api = p => fetch(p).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e)));
+// One snapshot exists today, so this is inert -- but every endpoint takes as_of,
+// F8 puts it in the hash and F7 bakes it into export filenames, so the plumbing
+// belongs in one place rather than at each of the twenty call sites.
+let AS_OF = null;   // null = server default (the latest snapshot)
+const withAsOf = p =>
+  AS_OF ? p + (p.includes("?") ? "&" : "?") + "as_of=" + encodeURIComponent(AS_OF) : p;
+const api = p => fetch(withAsOf(p)).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e)));
 const money = v => v == null ? "-" : "$" + Math.round(v).toLocaleString();
 const money2 = v => v == null ? "-" : "$" + Number(v).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
 const num = v => v == null ? "-" : Number(v).toLocaleString();
 const pct = v => v == null ? "-" : Number(v).toFixed(1) + "%";
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
+// The hash is the single source of truth for "where am I". Handlers write it and
+// applyHash() reads it, rather than each handler both acting and recording -- the
+// browser's Back button then works for free, because a hashchange is the same
+// input as a click.
+let APPLYING_HASH = false;
+
+function writeHash(patch, push = false) {
+  if (APPLYING_HASH) return;              // do not fight applyHash()
+  const p = new URLSearchParams(location.hash.slice(1));
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null || v === undefined || v === "") p.delete(k); else p.set(k, v);
+  }
+  const next = "#" + p.toString();
+  if (next === location.hash) return;
+  (push ? history.pushState : history.replaceState).call(history, null, "", next);
+}
+
+// The tab set is closed and comes from the markup, so match against it rather
+// than interpolating a URL fragment into a selector: a hash of #tab=" makes
+// querySelector throw a SyntaxError, and applyHash() is awaited before the tab
+// loaders run, so one bad character would blank the page.
+const TABS = [...document.querySelectorAll("nav button")].map(b => b.dataset.tab);
+
+function activateTab(tabName) {
+  if (!TABS.includes(tabName)) return;
+  document.querySelectorAll("nav button").forEach(
+    x => x.classList.toggle("on", x.dataset.tab === tabName));
+  document.querySelectorAll("main section").forEach(
+    s => s.classList.toggle("on", s.id === tabName));
+}
+
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
-  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x === b));
-  document.querySelectorAll("main section").forEach(s => s.classList.toggle("on", s.id === b.dataset.tab));
+  activateTab(b.dataset.tab);
+  writeHash({tab: b.dataset.tab}, true);
 });
 
 function table(el, cols, rows, opts = {}) {
@@ -332,6 +430,20 @@ function bars(el, items, {fmt = num, warnAt = null, domain = null, colorFor = nu
     </div>`).join("");
   if (onItem) el.querySelectorAll(".bar-row").forEach(row =>
     row.onclick = () => onItem(items[+row.dataset.ii]));
+}
+
+function exportLinks(cardSel, dataset) {
+  // Plain <a href> with the download attribute, not fetch + blob: the endpoint
+  // already sends Content-Disposition, so letting the browser do the download
+  // keeps the file out of JS memory and gets the browser's own progress UI.
+  const card = document.querySelector(cardSel);
+  if (!card) return;
+  const holder = document.createElement("p");
+  holder.className = "hint export-links";
+  holder.innerHTML =
+    `Export: <a href="${esc(withAsOf("/api/export/" + dataset + ".csv"))}" download>CSV</a>`
+  + ` · <a href="${esc(withAsOf("/api/export/" + dataset + ".xlsx"))}" download>Excel</a>`;
+  card.appendChild(holder);
 }
 
 function expChart(el, rows, asOf) {
@@ -419,6 +531,7 @@ function setBackButton(fromPicker) {
 $("#dlg").addEventListener("close", () => {
   PICKER_BACK = null;
   $("#dlg-back-slot").innerHTML = "";
+  writeHash({property: null, lease: null, month: null, pcode: null});
 });
 
 // FastAPI's 422 body carries `detail` as a list of objects, not a string, and a
@@ -592,6 +705,270 @@ async function loadMatrix() {
   $("#profit-rank-note").textContent = buildNotRankedNote(d.excluded, d.exclusion_reasons);
 }
 
+// --------------------------------------------------------------------------- #
+// F2/F5/F6 -- Economics tab
+// --------------------------------------------------------------------------- #
+
+function bridgeChart(el, b) {
+  // Signs come from the values, not from Math.abs(): loss_to_lease is negative
+  // for the books whose contracted rent sits above market (115r, 126a, 462a on
+  // this corpus), and forcing it downward moves the cursor the wrong way by
+  // twice the amount, so the Billed bar stops connecting to the one before it.
+  // `kind` only chooses the colour and whether the bar floats; the direction is
+  // the sign of `value`.
+  const step = (label, v) => ({label, value: v, kind: v < 0 ? "down" : "up"});
+  const steps = [
+    {label: "Gross potential", value: +b.gross_potential_rent, kind: "total"},
+    step("Vacancy",       -(+b.vacancy_loss)),
+    step("Loss to lease", -(+b.loss_to_lease)),
+    step("Subsidy",        +b.subsidy),
+    step("Concessions",    +b.concessions),
+    step("Ancillary",      +b.ancillary),
+    {label: "Billed",      value: +b.billed_charges, kind: "total"},
+  ];
+  const W = 720, H = 380, pad = {l:70, r:16, t:16, b:52};
+  let cursor = 0;
+  const bars_ = steps.map(s => {
+    let y0 = cursor, y1;
+    if (s.kind === "total") { y0 = 0; y1 = s.value; } else { y1 = cursor + s.value; }
+    cursor = y1;
+    return {...s, y0, y1};
+  });
+  const ys = bars_.flatMap(bb => [bb.y0, bb.y1]).concat([0]);
+  const yMax = Math.max(...ys, 1), yMin = Math.min(...ys, 0);
+  const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+  const bw = plotW / bars_.length;
+  const sy = v => pad.t + plotH - (v - yMin) / ((yMax - yMin) || 1) * plotH;
+  // bw, not steps.length * bw: the latter is plotW by construction and therefore
+  // constant, so the rotated branch could never run. 88px is where "Gross
+  // potential" at 12px starts touching its neighbour.
+  const rotate = bw < 88;
+  const axisY = sy(yMin), nameY = axisY + 16;
+
+  const cols = bars_.map((bb, i) => {
+    const x = pad.l + i * bw, cx = x + bw / 2;
+    const yTop = sy(Math.max(bb.y0, bb.y1)), yBot = sy(Math.min(bb.y0, bb.y1));
+    const h = Math.max(1, yBot - yTop);
+    const color = bb.kind === "total" ? "var(--accent)"
+                : bb.kind === "up"    ? "var(--q-performing)" : "var(--q-leaking)";
+    const nameAttrs = rotate
+      ? `text-anchor="end" transform="rotate(-25 ${cx} ${nameY})"` : `text-anchor="middle"`;
+    return `<g>
+      <rect x="${x + 4}" y="${yTop}" width="${Math.max(bw - 8, 1)}" height="${h}" fill="${color}" rx="2"/>
+      <text x="${cx}" y="${Math.max(10, yTop - 6)}" text-anchor="middle">${esc(money(bb.value))}</text>
+      <text x="${cx}" y="${nameY}" ${nameAttrs}>${esc(bb.label)}</text>
+      <title>${esc(bb.label)}: ${esc(money(bb.value))}</title>
+    </g>`;
+  }).join("");
+
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="group"
+      aria-label="Revenue bridge, gross potential rent to billed charges">
+    <line x1="${pad.l}" y1="${axisY}" x2="${W - pad.r}" y2="${axisY}" stroke="var(--line)"/>
+    ${cols}
+  </svg>`;
+}
+
+function bridgeCheck(b) {
+  // signed() prints the operator that matches the sign, so a book whose
+  // contracted rent is above market reads "+ $22,830 loss to lease" and the
+  // line still adds up when the reader checks it.
+  const signed = (v, name) => (+v < 0 ? "− " : "+ ") + money(Math.abs(+v)) + " " + name + " ";
+  $("#bridge-check").textContent =
+    `${money(b.gross_potential_rent)} `
+  + signed(-(+b.vacancy_loss), "vacancy")
+  + signed(-(+b.loss_to_lease), "loss to lease")
+  + (+b.subsidy ? signed(b.subsidy, "subsidy") : "")
+  + signed(b.concessions, "concessions")
+  + signed(b.ancillary, "ancillary")
+  + `= ${money(b.billed_charges)} billed`;
+}
+
+function renderBridge(d, scope) {
+  if (scope === "__portfolio__") {
+    const b = (d.bridge_portfolio || [])[0];
+    if (!b || !b.books) {
+      $("#bridge-chart").innerHTML = `<p class="empty">No scored books for this snapshot.</p>`;
+      $("#bridge-check").textContent = "";
+      return;
+    }
+    bridgeChart($("#bridge-chart"), b);
+    bridgeCheck(b);
+    return;
+  }
+  const row = d.bridge.find(r => r.property_code === scope);
+  if (!row) return;
+  if (row.exclusion_reason) {
+    const detail = (d.exclusion_detail || {})[row.exclusion_reason]
+      || d.exclusion_reasons[row.exclusion_reason] || row.exclusion_reason;
+    $("#bridge-chart").innerHTML = `<p class="empty">${esc(detail)}</p>`;
+    $("#bridge-check").textContent = "";
+    return;
+  }
+  bridgeChart($("#bridge-chart"), row);
+  bridgeCheck(row);
+}
+
+function outlierColor(r) {
+  return r.pct_vs_median >= 10 ? "var(--accent)"
+       : r.pct_vs_median <= -10 ? "var(--warn)" : "var(--muted)";
+}
+
+function outlierPlot(el, rows, scope) {
+  const pts = scope === "__all__" ? rows : rows.filter(r => r.property_code === scope);
+  if (!pts.length) { el.innerHTML = '<p class="empty">No plottable units for this scope.</p>'; return; }
+  const W = 640, H = 420, pad = {l:60, r:16, t:16, b:36};
+  const xMax = Math.max(...pts.map(r => +r.unit_sqft)) * 1.05;
+  const yMax = Math.max(...pts.map(r => +r.market_rent)) * 1.05;
+  const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+  const sx = v => pad.l + (v / (xMax || 1)) * plotW;
+  const sy = v => pad.t + plotH - (v / (yMax || 1)) * plotH;
+
+  let medianLines = "";
+  if (scope !== "__all__") {
+    const byType = {};
+    pts.forEach(r => { byType[r.unit_type_code] = +r.median_market_rent; });
+    medianLines = Object.entries(byType).map(([type, med]) => `
+      <line x1="${pad.l}" y1="${sy(med)}" x2="${W - pad.r}" y2="${sy(med)}"
+        stroke="var(--line)" stroke-dasharray="3 3"/>
+      <text x="${W - pad.r}" y="${sy(med) - 3}" text-anchor="end">${esc(type)} median ${money(med)}</text>`
+    ).join("");
+  }
+
+  const dots = pts.map((r, i) => `
+    <circle tabindex="0" role="button" data-i="${i}" cx="${sx(+r.unit_sqft)}" cy="${sy(+r.market_rent)}"
+      r="4" fill="${outlierColor(r)}" fill-opacity="0.8" stroke="var(--panel)" stroke-width="0.5">
+      <title>${esc(r.property_code)} ${esc(r.unit_code)} (${esc(r.unit_type_code)}) - ${num(r.unit_sqft)} sqft, ${money2(r.market_rent)}, ${r.pct_vs_median > 0 ? "+" : ""}${r.pct_vs_median}% vs type median</title>
+    </circle>`).join("");
+
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="group" id="outlier-svg"
+      aria-label="Rent positioning, ${pts.length} units">
+    ${medianLines}
+    <text x="${pad.l + plotW / 2}" y="${H - 4}" text-anchor="middle">Unit sq ft</text>
+    <text x="12" y="${pad.t + plotH / 2}" text-anchor="middle" transform="rotate(-90 12 ${pad.t + plotH / 2})">Market rent</text>
+    ${dots}
+  </svg>`;
+  $("#outlier-svg").querySelectorAll("circle").forEach(c => {
+    const open = () => openLeaseById(pts[+c.dataset.i]);
+    c.addEventListener("click", open);
+    c.addEventListener("keydown", ev => {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      ev.preventDefault();
+      open();
+    });
+  });
+}
+
+function renderOutlierTable(rows, scope, asOf) {
+  const pts = scope === "__all__" ? rows : rows.filter(r => r.property_code === scope);
+  const top = [...pts].sort((a, b) => Math.abs(b.pct_vs_median) - Math.abs(a.pct_vs_median)).slice(0, 20);
+  const asOfDate = asOf ? new Date(asOf) : null;
+  const near = r => {
+    if (!asOfDate || !r.lease_expiration) return false;
+    const days = (new Date(r.lease_expiration) - asOfDate) / 86400000;
+    return days >= 0 && days <= 120;
+  };
+  table($("#outlier-table"), [
+    {key:"property_code", label:"Property"},
+    {key:"unit_code", label:"Unit"},
+    {key:"unit_type_code", label:"Type"},
+    {key:"unit_sqft", label:"Sq ft", num:true, render:r=>num(r.unit_sqft)},
+    {key:"market_rent", label:"Market rent", num:true, render:r=>money2(r.market_rent)},
+    {key:"median_market_rent", label:"Type median", num:true, render:r=>money2(r.median_market_rent)},
+    {key:"pct_vs_median", label:"Δ%", num:true,
+     render:r=>`<span class="${r.pct_vs_median<0?"neg":""}">${r.pct_vs_median>0?"+":""}${r.pct_vs_median}%</span>`},
+    {key:"contract_vs_market", label:"Contract vs market", num:true, render:r=>money2(r.contract_vs_market)},
+    {key:"lease_expiration", label:"Expires",
+     render:r=>near(r) ? `<span class="pill notice">${esc(r.lease_expiration||"-")}</span>` : esc(r.lease_expiration||"-")},
+  ], top, {onRow: r => openLeaseById(r)});
+}
+
+function renderConcentration(rows) {
+  if (!rows.length) {
+    $("#concentration-note").textContent = "No book-month cleared the concentration threshold on this snapshot.";
+    $("#concentration-table").innerHTML = "";
+    return;
+  }
+  const heaviest = rows[0];
+  const th = (rows[0].concentration_threshold ?? 0.15) * 100;
+  const floor = rows[0].min_dated_leases ?? 50;
+  $("#concentration-note").textContent =
+    `${rows.length} book-month${rows.length===1?"":"s"} carry ${th.toFixed(0)}% or more of a book's dated `
+  + `leases (books with at least ${floor} dated leases). The heaviest is ${heaviest.property_code} `
+  + `${heaviest.expiry_month.slice(0,7)} at ${(heaviest.share_of_book*100).toFixed(1)}% - shifting `
+  + `${heaviest.leases_to_shift} renewals would bring it to the line.`;
+  table($("#concentration-table"), [
+    {key:"property_code", label:"Property"},
+    {key:"expiry_month", label:"Month", render:r=>esc(r.expiry_month.slice(0,7))},
+    {key:"expiring_leases", label:"Expiring", num:true, render:r=>num(r.expiring_leases)},
+    {key:"dated_leases", label:"Dated leases", num:true, render:r=>num(r.dated_leases)},
+    {key:"share_of_book", label:"Share of book", num:true, render:r=>pct(r.share_of_book*100)},
+    {key:"leases_to_shift", label:"Leases to shift", num:true, render:r=>num(r.leases_to_shift)},
+    {key:"charges_at_risk", label:"Charges at risk", num:true, render:r=>money(r.charges_at_risk)},
+    {key:"holdover_mtm", label:"Holdovers", num:true, render:r=>num(r.holdover_mtm)},
+  ], rows, {onRow: r => openExpirationMonth(r.expiry_month, r.property_code)});
+}
+
+let ECONOMICS = null;
+
+async function loadEconomics() {
+  const d = await api("/api/economics");
+  ECONOMICS = d;
+
+  const bridgeSel = $("#bridge-scope");
+  const books = (d.bridge_portfolio[0] || {}).books || 0;
+  bridgeSel.innerHTML = [`<option value="__portfolio__">Portfolio (${books} scored books)</option>`]
+    .concat(d.bridge.map(r => {
+      const suffix = r.exclusion_reason ? ` — ${d.exclusion_reasons[r.exclusion_reason] || r.exclusion_reason}` : "";
+      return `<option value="${esc(r.property_code)}">${esc(r.property_code)} - ${esc(r.property_name)}${esc(suffix)}</option>`;
+    })).join("");
+  bridgeSel.onchange = () => renderBridge(d, bridgeSel.value);
+  renderBridge(d, "__portfolio__");
+
+  const outlierSel = $("#outlier-scope");
+  const bookCodes = [...new Set(d.outliers.map(r => r.property_code))].sort();
+  outlierSel.innerHTML = `<option value="__all__">All books</option>`
+    + bookCodes.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  const renderOutliers = () => {
+    outlierPlot($("#outlier-plot"), d.outliers, outlierSel.value);
+    renderOutlierTable(d.outliers, outlierSel.value, d.as_of);
+  };
+  outlierSel.onchange = renderOutliers;
+  renderOutliers();
+
+  renderConcentration(d.concentration);
+}
+
+// --------------------------------------------------------------------------- #
+// F3 -- computed findings (anomalies)
+// --------------------------------------------------------------------------- #
+
+async function loadAnomalies() {
+  const d = await api("/api/anomalies");
+  if (!d.rows.length) { $("#anomaly-card").hidden = true; return; }
+  $("#anomaly-card").hidden = false;
+  const fmt = r => r.unit === "pct" ? pct(r.value) : money2(r.value);
+  const fmtMean = r => r.unit === "pct" ? pct(r.peer_mean) : money2(r.peer_mean);
+  $("#anomaly-list").innerHTML = d.rows.map(r => {
+    const headline = `${esc(r.property_code)} ${esc(r.label.toLowerCase())} ${fmt(r)} `
+                    + `(portfolio ${fmtMean(r)})`;
+    return `<div class="insight ${esc(r.priority)} clickable" data-code="${esc(r.property_code)}"
+        tabindex="0" role="button" aria-label="${esc(headline)} - open ${esc(r.property_code)}">
+      <div class="meta">${esc(r.priority)} · computed · z = ${r.z}</div>
+      <h3>${esc(headline)}</h3>
+      <div>${esc(r.units)} units, ${r.peer_books} peer books in this metric's distribution.</div>
+    </div>`;
+  }).join("");
+  $("#anomaly-list").querySelectorAll(".insight.clickable").forEach(el => {
+    const open = () => openProperty(el.dataset.code);
+    el.addEventListener("click", open);
+    el.addEventListener("keydown", ev => {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      ev.preventDefault();
+      open();
+    });
+  });
+}
+
 function openPointPicker(points) {
   PICKER_BACK = null;
   $("#dlg-back-slot").innerHTML = "";
@@ -609,15 +986,18 @@ function openPointPicker(points) {
   if (!$("#dlg").open) $("#dlg").showModal();
 }
 
-async function openExpirationMonth(month) {
+async function openExpirationMonth(month, propertyCode = null) {
   let d;
   try {
-    d = await api(`/api/leases/expiring?month=${encodeURIComponent(month)}${SUMMARY ? `&as_of=${encodeURIComponent(SUMMARY.as_of)}` : ""}`);
+    const q = new URLSearchParams({month});
+    if (propertyCode) q.set("property_code", propertyCode);
+    d = await api(`/api/leases/expiring?${q}`);
   } catch (e) {
     dialogError(`Leases expiring ${month.slice(0, 7)}`, e);
     return;
   }
-  const label = month.slice(0, 7);
+  writeHash({month, pcode: propertyCode || null, property: null, lease: null}, true);
+  const label = month.slice(0, 7) + (propertyCode ? ` · ${propertyCode}` : "");
   const chargesAtRisk = d.rows.reduce((s, r) => s + (r.charges_total || 0), 0);
   // `view` and `sortDir` live outside render() so that opening a lease and
   // pressing "Back to list" re-renders the table the user sorted, not the
@@ -683,6 +1063,74 @@ function openBookPicker(assetKey) {
   if (!$("#dlg").open) $("#dlg").showModal();
 }
 
+// F9: a cited figure is a plain span unless the insight has a real insight_id --
+// the fallback rendered by positioning_fallback has none, and there is no
+// payload snapshot to look one up in.
+function evidenceHtml(insightId, evidence) {
+  return (evidence || []).map(e => {
+    const text = `${esc(e.metric)} = ${esc(e.value)}${e.comparison ? " (" + esc(e.comparison) + ")" : ""}`;
+    return insightId != null
+      ? `<button class="ev-item" data-insight="${insightId}" data-metric="${esc(e.metric)}"
+           data-value="${esc(e.value)}">${text}</button>`
+      : `<span>${text}</span>`;
+  }).join(" · ");
+}
+
+const PROVENANCE_CACHE = new Map();
+
+// Delegated, not wired per-render: evidence buttons render in three places
+// (property dialog, Insights tab list, and inside a `.insight.clickable` row
+// whose own click opens a property) and a single handler is what keeps all
+// three in sync without three copies of the fetch/toggle logic.
+// Capture phase, not bubble: an evidence button sits inside a `.insight.clickable`
+// row that opens a property on click. A bubble-phase listener on document fires
+// *after* that row's own bubble listener has already run (it is closer to the
+// target), so stopPropagation() there is too late -- the property dialog would
+// already be open. Capturing on document runs before the event ever reaches the
+// row, so stopping it here is what actually suppresses the row's own handler.
+document.addEventListener("click", async ev => {
+  const btn = ev.target.closest(".ev-item");
+  if (!btn) return;
+  ev.stopPropagation();
+
+  const open = btn.nextElementSibling;
+  if (open && open.classList.contains("prov")) { open.remove(); return; }
+  const line = btn.closest(".ev");
+  if (line) line.querySelectorAll(".prov").forEach(p => p.remove());
+
+  const insightId = btn.dataset.insight;
+  let data = PROVENANCE_CACHE.get(insightId);
+  if (!data) {
+    try { data = await api(`/api/insight/${insightId}/provenance`); }
+    catch (e) { data = {error: errText(e)}; }
+    PROVENANCE_CACHE.set(insightId, data);
+  }
+
+  const div = document.createElement("div");
+  div.className = "prov";
+  if (data.error) {
+    div.textContent = data.error;
+  } else {
+    const found = data.evidence.find(
+      x => x.metric === btn.dataset.metric && String(x.value) === btn.dataset.value
+    );
+    if (found && found.found) {
+      div.innerHTML = "Found in the payload at:"
+        + found.paths.map(p => `<span class="path">${esc(p)}</span>`).join("");
+    } else {
+      div.classList.add("missing");
+      div.innerHTML = "Not present in the current payload.";
+      if (data.stale) {
+        div.classList.add("stale");
+        div.innerHTML += `<br>The payload has changed since this insight was generated `
+          + `(generated against <span class="path">${esc(data.payload_at_generation.slice(0, 12))}…</span>, `
+          + `now <span class="path">${esc(data.payload_current.slice(0, 12))}…</span>).`;
+      }
+    }
+  }
+  btn.insertAdjacentElement("afterend", div);
+}, true);
+
 function insightPanel(insights, matrixRow, fallback) {
   const positioningInsight = insights.find(i => i.category === "positioning");
   const chip = matrixRow && matrixRow.plottable
@@ -694,8 +1142,7 @@ function insightPanel(insights, matrixRow, fallback) {
       <div class="meta">${esc(i.priority||"")}${i.category?" · "+esc(i.category):""}${i.scope&&i.scope!=="property"?" · "+esc(i.scope):""}${computed?" · computed":""}</div>
       <h3>${esc(i.headline)}</h3>
       <div>${esc(i.detail)}</div>
-      <div class="ev">${(i.evidence||[]).map(e =>
-        `${esc(e.metric)} = ${esc(e.value)}${e.comparison ? " (" + esc(e.comparison) + ")" : ""}`).join(" · ")}</div>
+      <div class="ev">${evidenceHtml(computed ? null : i.insight_id, i.evidence)}</div>
     </div>`;
   let body = insights.map(i => renderOne(i)).join("");
   if (!positioningInsight) {
@@ -782,6 +1229,7 @@ async function openProperty(code, opts = {}) {
   let d;
   try { d = await api(`/api/property/${encodeURIComponent(code)}`); }
   catch (e) { return dialogError(`Property ${code}`, e); }
+  writeHash({property: code, lease: null, month: null, pcode: null}, true);
   const k = d.kpi, ltl = d.loss_to_lease[0] || {};
   const matrixRow = (d.matrix && d.matrix.length) ? d.matrix[0] : null;
   setBackButton(opts.fromPicker);
@@ -870,6 +1318,7 @@ async function openLease(r, opts = {}) {
   let charges;
   try { charges = await api(`/api/lease/${r.lease_id}/charges`); }
   catch (e) { return dialogError(`Unit ${r.unit_code} charges`, e); }
+  writeHash({lease: r.lease_id, property: null, month: null, pcode: null}, true);
   setBackButton(opts.fromPicker);
   $("#dlg-title").textContent = `${r.property_code} · unit ${r.unit_code} · ${r.occupancy_status}`;
   const sum = charges.reduce((a,c) => a + Number(c.amount), 0);
@@ -889,6 +1338,17 @@ async function openLease(r, opts = {}) {
      render:c=>`<span class="${c.amount<0?"neg":""}">${money2(c.amount)}</span>`},
   ], charges);
   if (!$("#dlg").open) $("#dlg").showModal();
+}
+
+// The Economics rows come from mart.unit_rent_outlier, which carries no resident,
+// balance or printed charge total -- openLease() would render "no resident" and
+// "-" for all three on an occupied unit that has all of them. /api/lease/<id> is
+// the header row it wants, and it is one round trip on a click.
+async function openLeaseById(r) {
+  try {
+    const full = await api(`/api/lease/${encodeURIComponent(r.lease_id)}`);
+    await openLease(full);
+  } catch (e) { dialogError(`Unit ${r.unit_code}`, e); }
 }
 
 // The four categories the user asked to filter on lead; anything else the
@@ -917,6 +1377,7 @@ function renderInsightFilters() {
     if (!c) INSIGHT_CATS = new Set();
     else if (INSIGHT_CATS.has(c)) INSIGHT_CATS.delete(c);
     else INSIGHT_CATS.add(c);
+    writeHash({cat: INSIGHT_CATS.size ? [...INSIGHT_CATS].join(",") : null});
     renderInsightFilters();
     renderInsightList();
   });
@@ -944,8 +1405,7 @@ function renderInsightList() {
         i.property_code ? " " + esc(i.property_code) : i.asset_key ? " " + esc(i.asset_key) : ""}</div>
       <h3>${esc(i.headline)}</h3>
       <div>${esc(i.detail)}</div>
-      <div class="ev">${(i.evidence||[]).map(e =>
-        `${esc(e.metric)} = ${esc(e.value)}${e.comparison ? " (" + esc(e.comparison) + ")" : ""}`).join(" · ")}</div>
+      <div class="ev">${evidenceHtml(i.insight_id, i.evidence)}</div>
     </div>`;
   }).join("");
   $("#insight-list").querySelectorAll(".insight.clickable").forEach(el => {
@@ -965,7 +1425,11 @@ async function loadInsights() {
   const d = await api("/api/insights");
   const lr = d.last_run;
   INSIGHTS = d.insights;
-  INSIGHT_CATS = new Set();
+  // Read straight from the hash rather than assuming a fresh Set(): F8's applyHash
+  // may run before this resolves (it restores the tab/dialog before the tab loaders
+  // settle), and this function owning its own read means the two never race.
+  const hp = new URLSearchParams(location.hash.slice(1));
+  INSIGHT_CATS = hp.has("cat") ? new Set(hp.get("cat").split(",").filter(Boolean)) : new Set();
   $("#insight-meta").innerHTML = INSIGHTS.length
     ? `Generated once per snapshot by a local model (${esc(INSIGHTS[0].model)}) and stored - every cited figure is checked against the source payload before it is saved. Click an insight to open what it is about.`
     : "";
@@ -1013,7 +1477,62 @@ async function loadQuality() {
     {key:"description", label:"Description", render:r=>esc(r.description||"-")},
     {key:"label_verified", label:"Label",
      render:r=>r.label_verified ? '<span class="pill">verified</span>' : '<span class="pill notice">inferred</span>'},
+    {key:"line_count", label:"Lines", num:true, render:r=>num(r.line_count)},
+    {key:"amount", label:"Amount", num:true, render:r=>money2(r.amount)},
+    {key:"properties", label:"Properties", num:true, render:r=>num(r.properties)},
   ], d.charge_codes);
+  renderReviewPanel(d.charge_codes.filter(c => !c.label_verified));
+  table($("#audit-table"), [
+    {key:"charge_code", label:"Code"},
+    {key:"old_category", label:"Category",
+     render:r=>r.old_category===r.new_category ? esc(r.old_category) : `${esc(r.old_category)} → ${esc(r.new_category)}`},
+    {key:"new_description", label:"Description", render:r=>esc(r.new_description||"-")},
+    {key:"new_verified", label:"Verified",
+     render:r=>r.new_verified ? '<span class="pill">yes</span>' : '<span class="pill notice">no</span>'},
+    {key:"changed_by", label:"By"},
+    {key:"changed_at", label:"When", render:r=>esc(String(r.changed_at).replace("T"," ").slice(0,19))},
+  ], d.charge_code_audit);
+}
+
+// Single quotes, with any embedded one escaped -- 'W/D' and any future code
+// containing a space or a quote must still produce a command that actually runs.
+const shellQuote = s => `'${String(s).replace(/'/g, "'\\''")}'`;
+
+function renderReviewPanel(codes) {
+  $("#review-card").hidden = codes.length === 0;
+  if (!codes.length) return;
+  $("#review-count").textContent = codes.length;
+  $("#review-list").innerHTML = codes.map(c => {
+    const cmd = `aker-etl charge-code set ${shellQuote(c.charge_code)} `
+              + `--category ${c.category} `
+              + `--description ${shellQuote(c.description || "")} --verified`;
+    return `<div class="insight low">
+      <h3>${esc(c.charge_code)} <span class="muted">(${esc(c.category)})</span></h3>
+      <div>${esc(c.description || "no description")} - ${num(c.line_count)} line(s), ${money2(c.amount)},
+        ${num(c.properties)} propert${c.properties===1?"y":"ies"}</div>
+      <div class="ev"><code>${esc(cmd)}</code>
+        <button class="chip" data-cmd="${esc(cmd)}">Copy command</button></div>
+    </div>`;
+  }).join("");
+  $("#review-list").querySelectorAll("button[data-cmd]").forEach(btn => btn.onclick = () => {
+    const cmd = btn.dataset.cmd;
+    const done = () => { const t = btn.textContent; btn.textContent = "Copied"; setTimeout(() => btn.textContent = t, 1200); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cmd).then(done);
+      return;
+    }
+    // navigator.clipboard is unavailable on a non-secure origin, and this app
+    // is served over plain HTTP on 127.0.0.1.
+    const ta = document.createElement("textarea");
+    ta.value = cmd;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    done();
+  });
 }
 
 // The five handlers below are fire-and-forget, so a rejection here is an
@@ -1024,12 +1543,101 @@ const reloadUnits = () => loadUnits().catch(e => {
   $("#unit-count").textContent = errText(e);
 });
 
-["f-prop","f-status"].forEach(id => $("#"+id).onchange = () => { UNIT_OFFSET = 0; reloadUnits(); });
-let t; $("#f-q").oninput = () => { UNIT_OFFSET = 0; clearTimeout(t); t = setTimeout(reloadUnits, 250); };
-$("#unit-prev").onclick = () => { UNIT_OFFSET = Math.max(0, UNIT_OFFSET - UNIT_LIMIT); reloadUnits(); };
-$("#unit-next").onclick = () => { UNIT_OFFSET += UNIT_LIMIT; reloadUnits(); };
+// replaceState, not pushState: a debounced search box (or the prev/next pager)
+// that pushed a history entry per keystroke would make the Back button useless.
+const writeUnitsHash = () => writeHash({
+  status: $("#f-status").value || null,
+  q: $("#f-q").value.trim() || null,
+  offset: UNIT_OFFSET || null,
+});
+
+["f-prop","f-status"].forEach(id => $("#"+id).onchange = () => {
+  UNIT_OFFSET = 0; writeUnitsHash(); reloadUnits();
+});
+let t; $("#f-q").oninput = () => {
+  UNIT_OFFSET = 0; writeUnitsHash(); clearTimeout(t); t = setTimeout(reloadUnits, 250);
+};
+$("#unit-prev").onclick = () => {
+  UNIT_OFFSET = Math.max(0, UNIT_OFFSET - UNIT_LIMIT); writeUnitsHash(); reloadUnits();
+};
+$("#unit-next").onclick = () => {
+  UNIT_OFFSET += UNIT_LIMIT; writeUnitsHash(); reloadUnits();
+};
+
+// F8: tab, property, lease, month(+pcode), the units filters and the insight
+// category set all live in the hash; `as_of` is read but not yet written (one
+// snapshot exists today) so a pinned link keeps working when a second one lands.
+async function applyHash(initial = false) {
+  APPLYING_HASH = true;
+  try {
+    const p = new URLSearchParams(location.hash.slice(1));
+    if (p.has("as_of")) AS_OF = p.get("as_of");
+
+    // No tab in the hash means the landing tab, not "leave whatever is showing":
+    // the first nav click pushes #tab=..., so Back must be able to return here.
+    activateTab(p.get("tab") || "portfolio");
+
+    // Assign unconditionally, not only when the key is present: backing out of a
+    // filtered state has to clear the box, not leave the last filter in it.
+    const status = p.get("status") || "", q = p.get("q") || "";
+    const offset = parseInt(p.get("offset") || "0", 10) || 0;
+    const unitsChanged =
+      $("#f-status").value !== status || $("#f-q").value !== q || UNIT_OFFSET !== offset;
+    $("#f-status").value = status;
+    $("#f-q").value = q;
+    UNIT_OFFSET = offset;
+    // Not on the initial call: loadUnits() runs from the start-up block a moment
+    // later and would otherwise fetch the same page twice.
+    if (unitsChanged && !initial) reloadUnits();
+
+    // The chips are rendered from INSIGHT_CATS, so restoring the set is what makes
+    // Back over a chip click visible. Only once loadInsights() has populated
+    // INSIGHTS -- before that there is nothing to re-render.
+    const cats = p.has("cat") ? new Set(p.get("cat").split(",").filter(Boolean)) : new Set();
+    const catsChanged =
+      cats.size !== INSIGHT_CATS.size || [...cats].some(c => !INSIGHT_CATS.has(c));
+    INSIGHT_CATS = cats;
+    if (catsChanged && !initial && INSIGHTS.length) {
+      renderInsightFilters();
+      renderInsightList();
+    }
+
+    // At most one dialog: lease wins over property, which wins over month. A hash
+    // with no dialog key means no dialog -- Back out of an open dialog has to
+    // close it, or the screen keeps showing what the URL no longer names. The
+    // close handler's own writeHash() is inert here because APPLYING_HASH is set.
+    if (p.has("lease")) {
+      if ($("#dlg").open) $("#dlg").close();
+      try {
+        const row = await api(`/api/lease/${encodeURIComponent(p.get("lease"))}`);
+        await openLease(row);
+      } catch (e) { dialogError("Lease", e); }
+    } else if (p.has("property")) {
+      if ($("#dlg").open) $("#dlg").close();
+      await openProperty(p.get("property"));
+    } else if (p.has("month")) {
+      if ($("#dlg").open) $("#dlg").close();
+      await openExpirationMonth(p.get("month"), p.get("pcode") || null);
+    } else if ($("#dlg").open) {
+      $("#dlg").close();
+    }
+  } finally {
+    APPLYING_HASH = false;
+  }
+}
+// Wrapped, not passed directly: addEventListener hands the handler a
+// HashChangeEvent, which would land in applyHash's `initial` parameter and be
+// truthy -- suppressing the reloadUnits() and insight re-render that exist
+// precisely for the hashchange (Back/Forward) case.
+window.addEventListener("hashchange", () => applyHash());
 
 (async () => {
+  // Read `as_of` before the first fetch: every endpoint honours it, and setting
+  // it only after the first load would show one snapshot and then flicker to
+  // another.
+  const initial = new URLSearchParams(location.hash.slice(1));
+  if (initial.has("as_of")) AS_OF = initial.get("as_of");
+
   try {
     await loadSummary();
   } catch (e) {
@@ -1037,16 +1645,35 @@ $("#unit-next").onclick = () => { UNIT_OFFSET += UNIT_LIMIT; reloadUnits(); };
       `<div class="empty">${esc(e.detail || e.message || "Failed to load. Is the database up and loaded?")}</div>`;
     return;
   }
+
+  // F7: one link per exportable dataset, on the card that shows it. Cards live
+  // in the DOM even while their tab is hidden, so this can run unconditionally.
+  [["#properties-card", "properties"], ["#assets-card", "assets"],
+   // ["#assets-card", "charge_mix"], // charge mix not needed
+   ["#exp-card", "expirations"], ["#matrix-card", "matrix"], ["#bridge-card", "revenue_bridge"],
+   ["#outlier-card", "outliers"], ["#concentration-card", "concentration"],
+   ["#anomaly-card", "anomalies"], ["#units-card", "units"], ["#recon-card", "reconciliation"],
+   ["#issues-card", "issues"], ["#charge-codes-card", "charge_codes"],
+  ].forEach(([sel, ds]) => exportLinks(sel, ds));
+
+  // Call applyHash() before the tab loaders settle: it restores the visible tab
+  // (and the units filters loadUnits() is about to read) so a link straight to
+  // #tab=matrix&property=115r lands correctly on first paint instead of
+  // flashing Portfolio first.
+  await applyHash(true);
+
   // allSettled, not all: one tab's endpoint failing (e.g. /api/insights 500) must
   // not blank the other tabs that already loaded fine.
   // Slots, not `#<tab> .card`: /api/matrix fills the Matrix tab *and* the
   // Portfolio tab's profitability ranking, so a matrix failure has to be
   // reported in two places or the landing tab shows an unexplained blank card.
   const tabs = [
-    ["matrix",   loadMatrix,   ["#matrix .card", "#profit-rank"]],
-    ["units",    loadUnits,    ["#units .card"]],
-    ["insights", loadInsights, ["#insights .card"]],
-    ["quality",  loadQuality,  ["#quality .card"]],
+    ["matrix",     loadMatrix,     ["#matrix .card", "#profit-rank"]],
+    ["economics",  loadEconomics,  ["#economics .card"]],
+    ["units",      loadUnits,      ["#units .card"]],
+    ["insights",   loadInsights,   ["#insights .card"]],
+    ["anomalies",  loadAnomalies,  ["#anomaly-card"]],
+    ["quality",    loadQuality,    ["#quality .card"]],
   ];
   const results = await Promise.allSettled(tabs.map(([, fn]) => fn()));
   results.forEach((res, i) => {

@@ -14,11 +14,14 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from psycopg_pool import ConnectionPool
 
 from ..config import get_settings
-from ..insights.fallback import positioning_fallback
+from ..insights.context import build_payload
+from ..insights.fallback import _EXCLUSION_DETAIL, positioning_fallback
+from ..insights.provenance import find_paths
+from .export import DATASETS, to_csv, to_xlsx
 
 STATIC = Path(__file__).parent / "static"
 
@@ -48,6 +51,11 @@ EXCLUSION_REASONS = {
     "no_market_rent": "Source prints no market rent (commercial book)",
     "no_charge_data": "Rent roll contains no lease-charge lines",
 }
+
+# One entry, keyed by snapshot_id, deliberately never invalidated mid-session: a
+# payload change between two requests is exactly the staleness that
+# /api/insight/{id}/provenance already reports via its own `stale` field.
+_PAYLOAD_CACHE: dict[int, tuple[str, dict]] = {}
 
 
 def _jsonable(v: Any) -> Any:
@@ -220,6 +228,59 @@ def matrix(as_of: str | None = None) -> dict:
     }
 
 
+@app.get("/api/economics")
+def economics(as_of: str | None = None) -> dict:
+    snap, as_of_date = _snapshot_id(as_of)
+    return {
+        "as_of": as_of_date,
+        "exclusion_reasons": EXCLUSION_REASONS,
+        # The long form, from insights/fallback.py, so the Economics tab and a
+        # model-written positioning fallback explain an excluded book in the same
+        # words rather than in two independently drifting ones.
+        "exclusion_detail": _EXCLUSION_DETAIL,
+        "bridge": _q(
+            """SELECT property_code, property_name, book_type, asset_key,
+                      gross_potential_rent, vacancy_loss, loss_to_lease, rent_charges,
+                      subsidy, concessions, ancillary, billed_charges, charge_coverage,
+                      exclusion_reason
+               FROM mart.revenue_bridge WHERE snapshot_id = %s ORDER BY property_code""",
+            (snap,),
+        ),
+        "bridge_portfolio": _q(
+            """SELECT sum(gross_potential_rent) AS gross_potential_rent,
+                      sum(vacancy_loss)  AS vacancy_loss,
+                      sum(loss_to_lease) AS loss_to_lease,
+                      sum(rent_charges)  AS rent_charges,
+                      sum(subsidy)       AS subsidy,
+                      sum(concessions)   AS concessions,
+                      sum(ancillary)     AS ancillary,
+                      sum(billed_charges) AS billed_charges,
+                      count(*)           AS books
+               FROM mart.revenue_bridge
+               WHERE snapshot_id = %s AND exclusion_reason IS NULL""",
+            (snap,),
+        ),
+        "outliers": _q(
+            """SELECT property_code, unit_code, unit_type_code, unit_sqft, occupancy_status,
+                      lease_expiration, lease_id, market_rent, contract_rent, rent_psf,
+                      peer_units, median_market_rent, median_rent_psf, market_vs_median,
+                      pct_vs_median, contract_vs_market
+               FROM mart.unit_rent_outlier WHERE snapshot_id = %s
+               ORDER BY abs(pct_vs_median) DESC, property_code, unit_code""",
+            (snap,),
+        ),
+        "concentration": _q(
+            """SELECT property_code, property_name, expiry_month::text AS expiry_month,
+                      expiring_leases, charges_at_risk, holdover_mtm, dated_leases,
+                      share_of_book, leases_to_shift, concentration_threshold, min_dated_leases
+               FROM mart.expiration_concentration
+               WHERE snapshot_id = %s AND concentrated
+               ORDER BY share_of_book DESC""",
+            (snap,),
+        ),
+    }
+
+
 @app.get("/api/property/{code}")
 def property_detail(code: str, as_of: str | None = None) -> dict:
     snap, _ = _snapshot_id(as_of)
@@ -270,7 +331,7 @@ def property_detail(code: str, as_of: str | None = None) -> dict:
         "matrix": matrix_rows,
         "positioning_fallback": positioning_fallback(matrix_rows[0] if matrix_rows else None),
         "insights": _q(
-            """SELECT category::text AS category, priority::text AS priority,
+            """SELECT insight_id, category::text AS category, priority::text AS priority,
                       headline, detail, evidence, model, generated_at
                FROM core.insight
                WHERE snapshot_id = %s AND property_id = %s
@@ -361,6 +422,30 @@ def units(
     return {"total": total, "rows": rows, "limit": limit, "offset": offset}
 
 
+@app.get("/api/lease/{lease_id}")
+def lease_detail(lease_id: int) -> dict:
+    """The header fields openLease() needs but a bare lease id does not carry.
+
+    F8 deep links only put `lease_id` in the URL hash; every other caller of
+    openLease() already has the full row from a table it clicked. This is what
+    lets a pasted #lease=<id> link resume in a fresh tab.
+    """
+    rows = _q(
+        """SELECT l.lease_id, p.property_code::text AS property_code, u.unit_code,
+                  l.occupancy_status::text AS occupancy_status, l.resident_id, r.display_name,
+                  l.market_rent, l.charges_total, l.balance
+           FROM core.lease l
+           JOIN core.property p ON p.property_id = l.property_id
+           JOIN core.unit u ON u.unit_id = l.unit_id
+           LEFT JOIN core.resident r ON r.resident_id = l.resident_id
+           WHERE l.lease_id = %s""",
+        (lease_id,),
+    )
+    if not rows:
+        raise HTTPException(404, f"unknown lease_id {lease_id}")
+    return rows[0]
+
+
 @app.get("/api/lease/{lease_id}/charges")
 def lease_charges(lease_id: int) -> list[dict]:
     return _q(
@@ -374,7 +459,7 @@ def lease_charges(lease_id: int) -> list[dict]:
 
 
 @app.get("/api/leases/expiring")
-def leases_expiring(month: str, as_of: str | None = None) -> dict:
+def leases_expiring(month: str, as_of: str | None = None, property_code: str | None = None) -> dict:
     """Every lease behind one bar of the expiration ladder.
 
     The WHERE clause is a deliberate copy of mart.expiration_schedule's own
@@ -417,17 +502,35 @@ def leases_expiring(month: str, as_of: str | None = None) -> dict:
              AND l.occupancy_status IN ('occupied','notice')
              AND l.lease_expiration IS NOT NULL
              AND date_trunc('month', l.lease_expiration)::date = %s::date
+             AND (%s::text IS NULL OR p.property_code::text = %s::text)
            ORDER BY p.property_code, u.unit_code""",
-        (snap, first),
+        (snap, first, property_code, property_code),
     )
     return {"month": first.isoformat(), "as_of": as_of_date, "total": len(rows), "rows": rows}
+
+
+@app.get("/api/anomalies")
+def anomalies(as_of: str | None = None) -> dict:
+    """Deterministic outliers. Independent of core.insight and of Ollama."""
+    snap, as_of_date = _snapshot_id(as_of)
+    rows = _q(
+        """SELECT property_code, property_name, units, metric, label, unit, worse_when,
+                  value, peer_mean, peer_sd, peer_books, z, adverse, priority
+           FROM mart.property_anomaly
+           WHERE snapshot_id = %s
+           ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+                    abs(z) DESC, property_code""",
+        (snap,),
+    )
+    return {"as_of": as_of_date, "rows": rows}
 
 
 @app.get("/api/insights")
 def insights(as_of: str | None = None) -> dict:
     snap, _ = _snapshot_id(as_of)
     rows = _q(
-        """SELECT i.scope::text AS scope, p.property_code::text AS property_code, i.asset_key,
+        """SELECT i.insight_id, i.scope::text AS scope, p.property_code::text AS property_code,
+                  i.asset_key,
                   i.category::text AS category, i.priority::text AS priority,
                   i.headline, i.detail, i.evidence, i.model, i.generated_at
            FROM core.insight i
@@ -484,8 +587,94 @@ def quality(as_of: str | None = None) -> dict:
                FROM raw.ingest_run ORDER BY run_id DESC LIMIT 10"""
         ),
         "charge_codes": _q(
-            """SELECT charge_code, category::text AS category, description, is_concession,
-                      label_verified
-               FROM core.charge_code ORDER BY category, charge_code"""
+            """SELECT cc.charge_code, cc.category::text AS category, cc.description,
+                      cc.is_concession, cc.label_verified,
+                      count(lc.*) FILTER (WHERE l.lease_id IS NOT NULL)        AS line_count,
+                      coalesce(sum(lc.amount) FILTER (WHERE l.lease_id IS NOT NULL), 0) AS amount,
+                      count(DISTINCT l.property_id)                            AS properties
+               FROM core.charge_code cc
+               LEFT JOIN core.lease_charge lc ON lc.charge_code = cc.charge_code
+               LEFT JOIN core.lease l         ON l.lease_id = lc.lease_id AND l.snapshot_id = %s
+               GROUP BY cc.charge_code, cc.category, cc.description, cc.is_concession,
+                        cc.label_verified
+               ORDER BY cc.category, cc.charge_code""",
+            (snap,),
         ),
+        "charge_code_audit": _q(
+            """SELECT charge_code, old_category::text AS old_category,
+                      new_category::text AS new_category, old_description, new_description,
+                      old_verified, new_verified, note, changed_by, changed_at
+               FROM core.charge_code_audit ORDER BY changed_at DESC LIMIT 20"""
+        ),
+    }
+
+
+@app.get("/api/export/{dataset}.{fmt}")
+def export(dataset: str, fmt: str, as_of: str | None = None) -> Response:
+    if dataset not in DATASETS:
+        raise HTTPException(
+            404, f"unknown dataset {dataset!r}; expected one of {', '.join(sorted(DATASETS))}"
+        )
+    if fmt not in ("csv", "xlsx"):
+        raise HTTPException(404, f"format must be csv or xlsx, got {fmt!r}")
+    snap, as_of_date = _snapshot_id(as_of)
+    stem, sql = DATASETS[dataset]
+    with _pool.connection() as conn, conn.cursor() as cur:
+        cur.execute(sql, (snap,))
+        cols = [d.name for d in cur.description or ()]
+        rows = cur.fetchall()
+    payload = to_csv(cols, rows) if fmt == "csv" else to_xlsx(stem, cols, rows)
+    filename = f"aker-{stem}-{as_of_date}.{fmt}"
+    return Response(
+        content=payload,
+        media_type=(
+            "text/csv; charset=utf-8" if fmt == "csv"
+            else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _cached_payload(conn, snapshot_id: int, as_of_date: dt.date) -> tuple[str, dict]:
+    cached = _PAYLOAD_CACHE.get(snapshot_id)
+    if cached is not None:
+        return cached
+    payload, sha = build_payload(conn, as_of_date)
+    _PAYLOAD_CACHE[snapshot_id] = (sha, payload)
+    return sha, payload
+
+
+@app.get("/api/insight/{insight_id}/provenance")
+def insight_provenance(insight_id: int) -> dict:
+    """For each cited figure, where it appears in the payload the model was given.
+
+    The payload is rebuilt from the mart views at request time. If its hash no
+    longer matches the one recorded against the insight, say so: the figures may
+    still all be found, but they are being found in a payload the model never saw.
+    """
+    rows = _q(
+        """SELECT i.snapshot_id, i.prompt_sha256, i.evidence, s.as_of_date
+           FROM core.insight i JOIN core.snapshot s ON s.snapshot_id = i.snapshot_id
+           WHERE i.insight_id = %s""",
+        (insight_id,),
+    )
+    if not rows:
+        raise HTTPException(404, f"unknown insight_id {insight_id}")
+    row = rows[0]
+    with _pool.connection() as conn:
+        payload_sha, payload = _cached_payload(conn, row["snapshot_id"], row["as_of_date"])
+
+    findings = []
+    for ev in row["evidence"] or []:
+        paths = find_paths(payload, str(ev.get("value")))
+        findings.append({
+            "metric": ev.get("metric"), "value": ev.get("value"),
+            "found": bool(paths), "paths": paths,
+        })
+    return {
+        "insight_id": insight_id,
+        "evidence": findings,
+        "payload_current": payload_sha,
+        "payload_at_generation": row["prompt_sha256"],
+        "stale": payload_sha != row["prompt_sha256"],
     }

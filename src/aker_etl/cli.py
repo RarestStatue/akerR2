@@ -18,6 +18,8 @@ from .logging_conf import configure
 app = typer.Typer(add_completion=False, help="Aker rent roll / unit availability ETL.")
 insights_app = typer.Typer(help="Local-model insight layer (optional).")
 app.add_typer(insights_app, name="insights")
+charge_code_app = typer.Typer(help="Charge-code classification review.")
+app.add_typer(charge_code_app, name="charge-code")
 console = Console()
 log = logging.getLogger(__name__)
 
@@ -269,6 +271,7 @@ def reset(yes: bool = typer.Option(False, "--yes", help="Required. Truncates all
                 """TRUNCATE core.lease_charge, core.lease, core.unit, core.unit_type,
                             core.resident, core.rent_roll_summary_group, core.charge_summary,
                             core.unit_availability, core.insight, core.insight_run,
+                            core.charge_code_audit,
                             core.snapshot, core.property, raw.load_issue, raw.source_file,
                             raw.ingest_run RESTART IDENTITY CASCADE"""
             )
@@ -277,6 +280,183 @@ def reset(yes: bool = typer.Option(False, "--yes", help="Required. Truncates all
         refresh_marts(conn)
     console.print("[green]core.* and raw.* truncated, mart views refreshed[/] "
                   "(charge_code seed retained)")
+
+
+# --------------------------------------------------------------------------- #
+# charge-code review
+# --------------------------------------------------------------------------- #
+
+
+@charge_code_app.command("list")
+def charge_code_list(
+    unverified: bool = typer.Option(
+        False, "--unverified", help="Only codes with label_verified = false."
+    ),
+) -> None:
+    """Every charge code with its category, description, verified flag and usage evidence."""
+    from .db import connect
+
+    s = _settings()
+    with connect(s, autocommit=True) as conn, conn.cursor() as cur:
+        # No snapshot filter, unlike /api/quality: a classification decision is
+        # about the code, not about one month's rent roll, so this counts every
+        # line the database holds.
+        cur.execute(
+            """SELECT cc.charge_code, cc.category::text, cc.description, cc.label_verified,
+                      count(lc.*) AS line_count, coalesce(sum(lc.amount), 0) AS amount,
+                      count(DISTINCT l.property_id) AS properties
+               FROM core.charge_code cc
+               LEFT JOIN core.lease_charge lc ON lc.charge_code = cc.charge_code
+               LEFT JOIN core.lease l ON l.lease_id = lc.lease_id
+               GROUP BY cc.charge_code, cc.category, cc.description, cc.label_verified
+               ORDER BY cc.category, cc.charge_code"""
+        )
+        rows = cur.fetchall()
+    if unverified:
+        rows = [r for r in rows if not r[3]]
+
+    t = Table(title="charge codes" + (" needing review" if unverified else ""))
+    for col in ("code", "category", "description", "label", "lines", "amount", "properties"):
+        t.add_column(col, justify="right" if col in ("lines", "amount", "properties") else "left")
+    for code, category, description, verified, line_count, amount, properties in rows:
+        label = "verified" if verified else "[yellow]inferred[/]"
+        t.add_row(code, category, description or "-", label,
+                   str(line_count), f"{amount:,.2f}", str(properties))
+    console.print(t if rows else "[green]nothing matches that filter[/]")
+
+
+@charge_code_app.command("set")
+def charge_code_set(
+    code: str = typer.Argument(..., help="e.g. 'W/D'"),
+    category: Optional[str] = typer.Option(None, "--category"),
+    description: Optional[str] = typer.Option(None, "--description"),
+    verified: Optional[bool] = typer.Option(None, "--verified/--unverified"),
+    note: Optional[str] = typer.Option(None, "--note", help="Why -- e.g. who confirmed it."),
+    by: Optional[str] = typer.Option(None, "--by", help="Defaults to the OS user."),
+) -> None:
+    """Reclassify a charge code and record the change.
+
+    The dashboard never writes. This is the one write path outside the loader,
+    and it leaves a row in core.charge_code_audit every time.
+    """
+    import getpass
+
+    from .db import connect, refresh_marts
+
+    s = _settings()
+    changed_by = by or getpass.getuser()
+
+    with connect(s, autocommit=False) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT category::text, description, label_verified
+                   FROM core.charge_code WHERE charge_code = %s FOR UPDATE""",
+                (code,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                cur.execute(
+                    """SELECT charge_code FROM core.charge_code
+                       ORDER BY similarity(charge_code, %s) DESC LIMIT 3""",
+                    (code,),
+                )
+                nearest = [r[0] for r in cur.fetchall()]
+                conn.rollback()
+                console.print(
+                    f"[red]unknown charge code {code!r}[/]. Nearest existing codes: "
+                    + ", ".join(nearest)
+                )
+                raise typer.Exit(EXIT_STRUCTURAL)
+            old_category, old_description, old_verified = row
+
+            if category is not None:
+                cur.execute(
+                    """SELECT e.enumlabel FROM pg_enum e
+                       JOIN pg_type t ON t.oid = e.enumtypid
+                       JOIN pg_namespace n ON n.oid = t.typnamespace
+                       WHERE t.typname = 'charge_category' AND n.nspname = 'core'
+                       ORDER BY e.enumsortorder"""
+                )
+                valid = [r[0] for r in cur.fetchall()]
+                if category not in valid:
+                    conn.rollback()
+                    console.print(
+                        f"[red]invalid category {category!r}[/]. Valid values: "
+                        + ", ".join(valid)
+                    )
+                    raise typer.Exit(EXIT_STRUCTURAL)
+
+            new_category = category if category is not None else old_category
+            new_description = description if description is not None else old_description
+            new_verified = old_verified if verified is None else verified
+
+            if (new_category, new_description, new_verified) == (
+                old_category, old_description, old_verified,
+            ):
+                conn.rollback()
+                console.print("[yellow]no change[/]")
+                raise typer.Exit(EXIT_OK)
+
+            cur.execute(
+                """UPDATE core.charge_code SET category = %s, description = %s, label_verified = %s
+                   WHERE charge_code = %s""",
+                (new_category, new_description, new_verified, code),
+            )
+            cur.execute(
+                """INSERT INTO core.charge_code_audit
+                     (charge_code, old_category, new_category, old_description, new_description,
+                      old_verified, new_verified, note, changed_by)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (code, old_category, new_category, old_description, new_description,
+                 old_verified, new_verified, note, changed_by),
+            )
+        conn.commit()
+
+    console.print(f"[green]{code}[/] updated:")
+    console.print(f"  category:    {old_category} -> {new_category}")
+    console.print(f"  description: {old_description!r} -> {new_description!r}")
+    console.print(f"  verified:    {old_verified} -> {new_verified}")
+
+    # A second, autocommit connection, after the transaction above commits:
+    # mart.charge_mix groups by category, so a reclassification that does not
+    # reach the dashboard until the next load is a trap.
+    with connect(s, autocommit=True) as conn2:
+        refresh_marts(conn2)
+    console.print("[green]mart views refreshed[/]")
+
+
+@charge_code_app.command("history")
+def charge_code_history(
+    code: Optional[str] = typer.Argument(None, help="Charge code; omit for every code."),
+) -> None:
+    """The charge-code audit trail, newest first."""
+    from .db import connect
+
+    s = _settings()
+    with connect(s, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute(
+            """SELECT charge_code, old_category::text, new_category::text,
+                      old_description, new_description, old_verified, new_verified,
+                      note, changed_by, changed_at
+               FROM core.charge_code_audit
+               WHERE (%s::text IS NULL OR charge_code = %s::text)
+               ORDER BY changed_at DESC""",
+            (code, code),
+        )
+        rows = cur.fetchall()
+    if not rows:
+        console.print("[yellow]no audit history[/]" + (f" for {code}" if code else ""))
+        return
+
+    t = Table(title="charge-code audit history" + (f" -- {code}" if code else ""))
+    for col in ("code", "category", "description", "label", "note", "by", "when"):
+        t.add_column(col)
+    for cc, oc, nc, od, nd, ov, nv, note, by, at in rows:
+        cat = oc if oc == nc else f"{oc} -> {nc}"
+        desc = (od or "-") if od == nd else f"{od!r} -> {nd!r}"
+        label = str(ov) if ov == nv else f"{ov} -> {nv}"
+        t.add_row(cc, cat, desc, label, note or "-", by, at.strftime("%Y-%m-%d %H:%M:%S"))
+    console.print(t)
 
 
 # --------------------------------------------------------------------------- #

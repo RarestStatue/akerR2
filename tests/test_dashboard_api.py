@@ -41,10 +41,14 @@ def client():
 ENDPOINTS_WITH_AS_OF = [
     "/api/summary",
     "/api/matrix",
+    "/api/economics",
+    "/api/anomalies",
     "/api/units",
     "/api/insights",
     "/api/quality",
     "/api/property/115r",
+    "/api/export/properties.csv",
+    "/api/export/revenue_bridge.xlsx",
 ]
 
 
