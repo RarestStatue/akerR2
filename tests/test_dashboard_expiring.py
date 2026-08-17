@@ -18,7 +18,20 @@ def dash():
     # Imported inside the fixture, not at module scope: importing the dashboard
     # opens a connection pool, and an integration-marked module still gets
     # *collected* during a unit-test run.
+    from aker_etl.config import get_settings
     from aker_etl.dashboard import app
+    from aker_etl.db import connect
+    from aker_etl.loader import load
+
+    s = get_settings()
+    try:
+        with connect(s, autocommit=True) as conn, conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM core.lease")
+            empty = cur.fetchone()[0] == 0
+    except Exception as exc:  # noqa: BLE001
+        pytest.skip(f"database unreachable: {exc}")
+    if empty:
+        load(s, force=True)
 
     return app
 

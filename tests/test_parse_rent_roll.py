@@ -13,7 +13,9 @@ import pytest
 from aker_etl.models import CoercionError, as_date, as_decimal, as_int
 from aker_etl.parsers import parse_rent_roll
 from aker_etl.parsers.rent_roll import RentRollStructureError
-from tests.conftest import rent_roll_path
+from tests.conftest import rent_roll_path, write_rent_roll
+
+SECTION_HEADER = ["Current/Notice/Vacant Residents"] + [""] * 13
 
 
 def test_golden_counts(all_rent_rolls):
@@ -151,6 +153,82 @@ def test_wrong_sheet_is_a_structural_error(tmp_path):
     wb.save(path)
     with pytest.raises(RentRollStructureError, match="Report1"):
         parse_rent_roll(path)
+
+
+# --------------------------------------------------------------------------- #
+# B6-B9 regression tests
+# --------------------------------------------------------------------------- #
+
+
+def test_a_current_row_with_no_resident_is_dropped_with_an_error(tmp_path):
+    path = write_rent_roll(tmp_path / "b6_blank.xlsx", [
+        SECTION_HEADER,
+        ["A101", "1BR", 750, "", "John Doe", 1200, "", "", 0, 0, "", "", "", 0],
+    ])
+    f = parse_rent_roll(path)
+    assert f.leases == []
+    issues = [i for i in f.issues if i.rule == "occupied_row_without_resident"]
+    assert len(issues) == 1
+    assert issues[0].severity == "error"
+    assert issues[0].detail["unit_code"] == "A101"
+
+
+def test_a_vacant_sentinel_row_still_loads_without_a_resident(tmp_path):
+    path = write_rent_roll(tmp_path / "b6_vacant.xlsx", [
+        SECTION_HEADER,
+        ["A102", "1BR", 750, "VACANT", "", 0, "", "", 0, 0, "", "", "", 0],
+    ])
+    f = parse_rent_roll(path)
+    assert len(f.leases) == 1
+    assert f.leases[0].resident_id is None
+    assert not [i for i in f.issues if i.rule == "occupied_row_without_resident"]
+
+
+def test_a_malformed_resident_id_is_dropped_with_an_error(tmp_path):
+    path = write_rent_roll(tmp_path / "b7.xlsx", [
+        SECTION_HEADER,
+        ["A103", "1BR", 750, "XYZ123", "Jane Doe", 1200, "", "", 0, 0, "", "", "", 0],
+    ])
+    f = parse_rent_roll(path)
+    assert f.leases == []
+    issues = [i for i in f.issues if i.rule == "resident_id_format"]
+    assert len(issues) == 1
+    assert issues[0].severity == "error"
+
+
+def test_charge_lines_after_a_dropped_block_are_not_separate_errors(tmp_path):
+    path = write_rent_roll(tmp_path / "b8_dropped.xlsx", [
+        SECTION_HEADER,
+        ["A104", "1BR", 750, "", "Jane Doe", 1200, "", "", 0, 0, "", "", "", 0],
+        ["", "", "", "", "", "", "RENT", 1000, "", "", "", "", "", ""],
+        ["", "", "", "", "", "", "TRASH", 50, "", "", "", "", "", ""],
+        ["", "", "", "", "", "", "PARKING", 75, "", "", "", "", "", ""],
+    ])
+    f = parse_rent_roll(path)
+    assert len(f.issues) == 1
+    assert f.issues[0].rule == "occupied_row_without_resident"
+    assert not [i for i in f.issues if i.rule == "charge_without_block"]
+
+
+def test_a_charge_line_with_no_block_is_still_an_error(tmp_path):
+    path = write_rent_roll(tmp_path / "b8_no_block.xlsx", [
+        SECTION_HEADER,
+        ["", "", "", "", "", "", "RENT", 1000, "", "", "", "", "", ""],
+    ])
+    f = parse_rent_roll(path)
+    issues = [i for i in f.issues if i.rule == "charge_without_block"]
+    assert len(issues) == 1
+
+
+def test_total_in_the_charge_code_column_of_a_lease_row_is_not_a_charge(tmp_path):
+    path = write_rent_roll(tmp_path / "b9.xlsx", [
+        SECTION_HEADER,
+        ["A105", "1BR", 750, "tRES001", "John Doe", 1200, "Total", 500, 0, 0, "", "", "", 0],
+    ])
+    f = parse_rent_roll(path)
+    assert len(f.leases) == 1
+    assert f.leases[0].charges == []
+    assert not [c for lease in f.leases for c in lease.charges if c.charge_code == "Total"]
 
 
 # --------------------------------------------------------------------------- #

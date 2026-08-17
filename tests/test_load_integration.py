@@ -393,3 +393,86 @@ def test_occupancy_numerator_and_denominator_cover_the_same_rows(settings, loade
         WHERE section <> 'current' AND occupancy_status IN ('occupied','notice')""") == 0
     assert _scalar(settings,
                    "SELECT count(*) FROM mart.property_snapshot_kpi WHERE pct_occupied > 100") == 0
+
+
+def test_reload_removes_a_summary_group_that_vanished_from_the_file(settings, loaded):
+    """B4: a summary group or charge-code row that no longer appears in a reloaded
+    file must not survive as a stale row from the previous load."""
+    with connect(settings, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute("SELECT snapshot_id, property_id, file_id FROM core.lease LIMIT 1")
+        snap, pid, fid = cur.fetchone()
+        cur.execute(
+            """INSERT INTO core.rent_roll_summary_group
+                 (snapshot_id, property_id, group_label, file_id)
+               VALUES (%s, %s, 'a label no workbook prints', %s)
+               ON CONFLICT (snapshot_id, property_id, group_label) DO NOTHING""",
+            (snap, pid, fid),
+        )
+    try:
+        load(settings, force=True)
+        assert _scalar(
+            settings,
+            """SELECT count(*) FROM core.rent_roll_summary_group
+               WHERE group_label = 'a label no workbook prints'""",
+        ) == 0
+    finally:
+        with connect(settings, autocommit=True) as conn, conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM core.rent_roll_summary_group WHERE group_label = "
+                "'a label no workbook prints'"
+            )
+
+
+def test_lease_file_id_has_an_index(settings, loaded):
+    """B13."""
+    assert _scalar(settings, """
+        SELECT 1 FROM pg_indexes
+        WHERE schemaname = 'core' AND indexname = 'lease_file_ix'""") == 1
+
+
+def test_the_schema_carries_no_alter_statements():
+    """Part A regression guard: sql/ is rebuilt from scratch, never migrated."""
+    import re
+
+    from aker_etl.db import SQL_DIR
+
+    pattern = re.compile(r"\bALTER\s+(TABLE|TYPE)\b", re.IGNORECASE)
+    for path in SQL_DIR.rglob("*.sql"):
+        text = "\n".join(
+            line for line in path.read_text(encoding="utf-8").splitlines()
+            if not line.strip().startswith("--")
+        )
+        assert not pattern.search(text), f"{path} contains an ALTER TABLE/TYPE statement"
+
+
+def test_insight_category_has_positioning(settings):
+    with connect(settings, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute(
+            """SELECT e.enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+               WHERE t.typname = 'insight_category' ORDER BY e.enumsortorder"""
+        )
+        labels = [r[0] for r in cur.fetchall()]
+    assert "positioning" in labels
+    assert len(labels) == 9
+
+
+def test_reset_leaves_no_rows_in_the_mart_views(settings, loaded):
+    """B5. Destructive: truncates the corpus, including core.insight and
+    core.insight_run, which `load(...)` cannot rebuild -- only a re-import of
+    insights.json can. Reload and re-import both happen in `finally` so a
+    failed assertion does not leave the developer's database empty or the
+    Insights tab blank."""
+    from pathlib import Path
+
+    from aker_etl.cli import reset as reset_cmd
+    from aker_etl.insights.store import import_artifact
+
+    artifact = Path(__file__).resolve().parents[1] / "insights.json"
+    try:
+        reset_cmd(yes=True)
+        assert _scalar(settings, "SELECT count(*) FROM mart.property_snapshot_kpi") == 0
+    finally:
+        load(settings, force=True)
+        if artifact.is_file():
+            import_artifact(settings, artifact)
+    assert _scalar(settings, "SELECT count(*) FROM core.lease") == 4106

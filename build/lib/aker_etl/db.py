@@ -74,10 +74,6 @@ def init_db(settings: Settings, *, drop: bool = False) -> tuple[list[str], list[
             f"migration directory not found: {SQL_DIR}. aker-etl runs from a checkout of "
             f"the repository; an installed copy carries no sql/ directory."
         )
-    if drop and not DROP_DIR.is_dir():
-        raise RuntimeError(
-            f"drop directory not found: {DROP_DIR}. --drop cannot rebuild the schema without it."
-        )
     dropped: list[str] = []
     applied: list[str] = []
     with connect(settings, autocommit=True) as conn:

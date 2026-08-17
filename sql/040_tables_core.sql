@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS core.unit (
   property_id  smallint NOT NULL REFERENCES core.property(property_id),
   unit_code    text NOT NULL,
   unit_type_id int REFERENCES core.unit_type(unit_type_id),
-  unit_sqft    int CHECK (unit_sqft >= 0),
+  unit_sqft    int CONSTRAINT unit_sqft_non_negative CHECK (unit_sqft >= 0),
   CONSTRAINT unit_uq UNIQUE (property_id, unit_code)
 );
 
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS core.lease (
   resident_id       text     REFERENCES core.resident(resident_id),  -- NULL for vacant/model/down
   section           core.lease_section    NOT NULL,
   occupancy_status  core.occupancy_status NOT NULL,
-  unit_sqft         int            CHECK (unit_sqft >= 0),
+  unit_sqft         int            CONSTRAINT lease_sqft_non_negative CHECK (unit_sqft >= 0),
   market_rent       numeric(12,2)  NOT NULL DEFAULT 0,
   resident_deposit  numeric(12,2)  NOT NULL DEFAULT 0,
   other_deposit     numeric(12,2)  NOT NULL DEFAULT 0,
@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS core.unit_availability (
   property_id        smallint NOT NULL REFERENCES core.property(property_id),
   avg_sqft           int   NOT NULL,
   avg_rent           numeric(12,2) NOT NULL,
-  units              int   NOT NULL CHECK (units >= 0),
+  units              int   NOT NULL CONSTRAINT availability_units_non_negative CHECK (units >= 0),
   occupied_no_notice int   NOT NULL,
   vacant_rented      int   NOT NULL,
   vacant_unrented    int   NOT NULL,
@@ -158,11 +158,3 @@ CREATE TABLE IF NOT EXISTS core.unit_availability (
 --    not people, so resident_id is NULL and occupancy_status carries the meaning.
 --  * unit.unit_sqft (latest observed) and lease.unit_sqft (as printed at the
 --    snapshot) are both kept; they can legitimately drift between snapshots.
-
--- Migration for databases created before the constraint was weakened (BUG.md 1).
--- DROP IF EXISTS on both names, then ADD, so this is idempotent and applies
--- cleanly whether the table was just created above or already existed.
-ALTER TABLE core.lease DROP CONSTRAINT IF EXISTS lease_notice_has_moveout;
-ALTER TABLE core.lease DROP CONSTRAINT IF EXISTS lease_notice_implies_moveout;
-ALTER TABLE core.lease ADD CONSTRAINT lease_notice_implies_moveout
-  CHECK (occupancy_status <> 'notice' OR move_out IS NOT NULL);

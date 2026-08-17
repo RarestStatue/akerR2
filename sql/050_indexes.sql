@@ -8,6 +8,9 @@ CREATE INDEX IF NOT EXISTS lease_moveout_ix     ON core.lease (move_out) WHERE m
 CREATE INDEX IF NOT EXISTS lease_movein_ix      ON core.lease (move_in)  WHERE move_in  IS NOT NULL;
 CREATE INDEX IF NOT EXISTS lease_balance_ix     ON core.lease (snapshot_id, balance) WHERE balance <> 0;
 CREATE INDEX IF NOT EXISTS lease_type_ix        ON core.lease (unit_type_id);
+-- Supports the FK to raw.source_file and the run_id lookup that /api/quality and
+-- the insight payload both run per request (dashboard/app.py, insights/context.py).
+CREATE INDEX IF NOT EXISTS lease_file_ix ON core.lease (file_id);
 
 -- covering: charge-mix aggregations never touch the heap
 CREATE INDEX IF NOT EXISTS lease_charge_code_ix  ON core.lease_charge (charge_code) INCLUDE (amount, lease_id);

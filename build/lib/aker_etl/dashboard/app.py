@@ -72,10 +72,9 @@ def _snapshot_id(as_of: str | None) -> tuple[int, str]:
     # and all seven reach the database through this one function. Without it the
     # string goes straight into `%s::date` and psycopg's parser raises, which
     # FastAPI turns into a 500 -- a client typo is a 400.
-    day: dt.date | None = None
     if as_of is not None:
         try:
-            day = dt.date.fromisoformat(as_of)
+            dt.date.fromisoformat(as_of)
         except ValueError:
             raise HTTPException(
                 400, f"as_of must be an ISO date (YYYY-MM-DD), got {as_of!r}"
@@ -83,7 +82,7 @@ def _snapshot_id(as_of: str | None) -> tuple[int, str]:
     rows = _q(
         "SELECT snapshot_id, as_of_date FROM core.snapshot "
         "WHERE (%s::date IS NULL OR as_of_date = %s::date) ORDER BY as_of_date DESC LIMIT 1",
-        (day, day),
+        (as_of, as_of),
     )
     if not rows:
         raise HTTPException(404, "no snapshot loaded -- run `aker-etl load` first")
@@ -349,11 +348,11 @@ def units(
            WHERE l.snapshot_id = %s
              AND (%s::text IS NULL OR p.property_code::text = %s::text)
              AND (%s::text IS NULL OR l.occupancy_status::text = %s::text)
-             AND (%s::text IS NULL OR u.unit_code ILIKE %s ESCAPE '\\'
-                                   OR r.display_name ILIKE %s ESCAPE '\\')
+             AND (%s::text IS NULL OR u.unit_code ILIKE %s ESCAPE '\'
+                                   OR r.display_name ILIKE %s ESCAPE '\')
            ORDER BY p.property_code, u.unit_code, l.section
            LIMIT %s OFFSET %s""",
-        (snap, property_code, property_code, status, status, pattern, pattern, pattern, limit, offset),
+        (snap, property_code, property_code, status, status, q, pattern, pattern, limit, offset),
     )
     total = rows[0]["total"] if rows else 0
     for r in rows:

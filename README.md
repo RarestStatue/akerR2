@@ -200,7 +200,7 @@ docker compose -f docker/docker-compose.yml --env-file .env down -v   # drop dat
 ## 3. Command reference
 
 ```
-aker-etl init-db                   Apply sql/*.sql in order (idempotent)
+aker-etl init-db [--drop --yes]    Apply sql/*.sql in order (idempotent); --drop rebuilds from scratch
 aker-etl load [--data-dir PATH] [--force] [--dry-run] [--jobs N]
               [--only rent_roll|unit_availability]
 aker-etl validate [--strict] [--run-id N]
@@ -221,6 +221,12 @@ the database and stores it.
 
 `--dry-run` parses and reconciles without writing to the database - the quickest
 way to see whether a new drop of files still matches the expected format.
+
+**Applying a schema change.** `sql/` contains no `ALTER` statements: the schema is declared once
+and rebuilt, never migrated. To pick up an edit to `sql/*.sql`, run `make reseed`
+(`aker-etl init-db --drop --yes && aker-etl load --force`). The workbooks are the source of truth,
+so nothing is lost — a full reload is ~1.1 s. `aker-etl reset --yes` is the softer option: it
+`TRUNCATE`s the data and leaves the schema alone.
 
 Re-running `aker-etl load` on unchanged files is nearly free: files are matched
 by SHA-256 and skipped, so a second run touches nothing. Use `--force` to reload

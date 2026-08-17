@@ -9,7 +9,7 @@ CLI   := $(VENV)/bin/aker-etl
 COMPOSE := docker compose -f docker/docker-compose.yml --env-file .env
 
 .DEFAULT_GOAL := help
-.PHONY: help venv install db-up db-down db-logs init-db load load-dry validate \
+.PHONY: help venv install db-up db-down db-logs init-db init-db-drop reseed load load-dry validate \
         validate-strict status serve insights insights-dry insights-show \
         insights-json insights-import \
         export-json reset test test-unit test-integration lint typecheck check clean
@@ -41,6 +41,13 @@ db-logs: ## Follow the Postgres log
 
 init-db: ## Apply sql/*.sql in order (idempotent)
 	$(CLI) init-db
+
+init-db-drop: ## DROP and re-create the schema, then apply sql/*.sql. Destructive.
+	$(CLI) init-db --drop --yes
+
+reseed: ## init-db --drop then a full reload from the workbooks. The way to apply a schema change.
+	$(CLI) init-db --drop --yes
+	$(CLI) load --force
 
 # --- ETL -------------------------------------------------------------------
 

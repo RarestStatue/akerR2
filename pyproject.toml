@@ -28,6 +28,9 @@ aker-etl = "aker_etl.cli:app"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+aker_etl = ["dashboard/static/*.html"]
+
 [tool.pytest.ini_options]
 markers = ["integration: requires a running Postgres container"]
 testpaths = ["tests"]

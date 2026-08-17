@@ -233,7 +233,6 @@ def parse_rent_roll(path: Path) -> RentRollFile:
                     ParsedIssue(severity="error", rule="lease_outside_section", sheet_row=idx,
                                 detail={"property_code": property_code, "unit_code": a})
                 )
-                dropped_block = True
                 continue
             lease = _parse_lease(r, idx, section, out.issues, property_code)
             if lease is None:
@@ -273,7 +272,6 @@ def parse_rent_roll(path: Path) -> RentRollFile:
         # 6 -- the block's Total row
         if g == "Total":
             if current is None:
-                dropped_block = False
                 continue
             try:
                 current.charges_total = as_decimal(r[7])

@@ -45,19 +45,17 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$
 BEGIN
+  -- 'positioning' is the quadrant-movement category the matrix pass writes
+  -- (PLAN2 section 2.7). It is declared here, in the CREATE, and never added by
+  -- an ALTER: this schema is rebuilt from scratch (aker-etl init-db --drop),
+  -- never migrated in place, because the 50 source workbooks are the record and
+  -- a full reload takes ~1.1 seconds.
   CREATE TYPE core.insight_category AS ENUM (
     'occupancy','revenue','concession','expiration','delinquency',
-    'unit_mix','data_quality','trend');
+    'unit_mix','data_quality','trend','positioning');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$
 BEGIN
   CREATE TYPE core.insight_priority AS ENUM ('low','medium','high');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
--- Quadrant-movement advice for the profitability matrix (PLAN2 section 2.7).
--- ADD VALUE IF NOT EXISTS is idempotent, and on PostgreSQL 12+ it is legal
--- inside the implicit transaction that init_db runs each file in, provided the
--- new value is not *used* in the same transaction. It is not: only the Python
--- insert path uses it, in a later transaction.
-ALTER TYPE core.insight_category ADD VALUE IF NOT EXISTS 'positioning';
